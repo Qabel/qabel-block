@@ -13,13 +13,15 @@ define('debug', default=False)
 define('asyncio', default=False)
 define('dummy', default=False)
 define('transfers', default=10)
+define('port', default='8888')
+define('noauth', default=False)
 
 logger = logging.getLogger(__name__)
 
 async def check_auth(auth, prefix, file_path, action):
     gen.sleep(1)
     if action == 'POST':
-        return auth == "Token MAGICFARYDUST"
+        return options.noauth or auth == "Token MAGICFARYDUST"
     else:
         return True
 
@@ -31,9 +33,13 @@ class FileHandler(RequestHandler):
 
     def initialize(self):
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(options.transfers)
+        if options.dummy:
+            from backends.dummy import Transfer
+        else:
+            from backends.s3 import Transfer
+        self.transfer = Transfer()
 
     async def prepare(self):
-        self.transfer = Transfer()
         self.auth = None
         self.streamer = None
         try:
@@ -45,7 +51,7 @@ class FileHandler(RequestHandler):
         auth = self.request.headers.get('Authorization', None)
         if not await check_auth(auth, prefix, file_path, self.request.method):
             self.auth = False
-            self.send_error()
+            self.send_error(403, reason="Not authorized for this prefix")
         else:
             self.auth = True
         if self.request.method == 'POST':
@@ -72,7 +78,8 @@ class FileHandler(RequestHandler):
         if self.streamer:
             self.streamer.data_complete()
             if not len(self.streamer.parts) == 1:
-                self.send_error()
+                self.send_error(400, reason="No file found")
+                return
             yield self.store_file(prefix, file_path, self.streamer.parts[0].f_out.name)
             self.streamer.release_parts()
 
@@ -88,20 +95,15 @@ class FileHandler(RequestHandler):
     def retrieve_file(self, prefix, file_path):
         return self.transfer.retrieve_file(prefix, file_path)
 
-if __name__ == '__main__':
+
+def main():
     tornado.options.parse_command_line()
-    if options.dummy:
-        from backends.dummy import Transfer
-    else:
-        from backends.s3 import Transfer
-    application = Application([
-        (r'^/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[\d\w-]+)', FileHandler),
-    ], debug=options.debug)
+    application = make_app()
     if options.debug:
-        application.listen(8888)
+        application.listen(options.port)
     else:
         server = tornado.httpserver.HTTPServer(application)
-        server.bind(8888)
+        server.bind(options.port)
         server.start(0)
     if options.asyncio:
         logger.info('Using asyncio')
@@ -111,3 +113,14 @@ if __name__ == '__main__':
         logger.info('Using IOLoop')
         from tornado.ioloop import IOLoop
         IOLoop.current().start()
+
+
+def make_app():
+    application = Application([
+        (r'^/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[\d\w-]+)', FileHandler),
+    ], debug=options.debug)
+    return application
+
+
+if __name__ == '__main__':
+    main()
