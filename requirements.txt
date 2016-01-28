@@ -1,0 +1,4 @@
+boto3==1.2.3
+pytest==2.8.7
+tornado==4.3
+tornadostreamform==0.1.1
