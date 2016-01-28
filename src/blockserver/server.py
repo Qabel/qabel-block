@@ -1,13 +1,12 @@
 import logging
 
 import tornado
+import tornado.httpserver
+from tornado import concurrent
+from tornado import gen
+from tornado.options import define, options
 from tornado.web import Application, RequestHandler, stream_request_body
 from tornadostreamform.multipart_streamer import MultiPartStreamer
-from tornado import gen
-from tornado import concurrent
-import tornado.httpserver
-
-from tornado.options import define, options
 
 define('debug', default=False)
 define('asyncio', default=False)
@@ -34,9 +33,9 @@ class FileHandler(RequestHandler):
     def initialize(self):
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(options.transfers)
         if options.dummy:
-            from backends.dummy import Transfer
+            from .backends.dummy import Transfer
         else:
-            from backends.s3 import Transfer
+            from .backends.s3 import Transfer
         self.transfer = Transfer()
 
     async def prepare(self):
@@ -89,11 +88,11 @@ class FileHandler(RequestHandler):
 
     @concurrent.run_on_executor(executor='_thread_pool')
     def store_file(self, prefix, file_path, filename):
-        return self.transfer.store_file(prefix, file_path, filename)
+        return self.transfer.store(prefix, file_path, filename)
 
     @concurrent.run_on_executor(executor='_thread_pool')
     def retrieve_file(self, prefix, file_path):
-        return self.transfer.retrieve_file(prefix, file_path)
+        return self.transfer.retrieve(prefix, file_path)
 
 
 def main():
@@ -120,7 +119,3 @@ def make_app():
         (r'^/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[\d\w-]+)', FileHandler),
     ], debug=options.debug)
     return application
-
-
-if __name__ == '__main__':
-    main()

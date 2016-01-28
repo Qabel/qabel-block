@@ -1,8 +1,10 @@
-from tornado.testing import AsyncHTTPTestCase
-from tornado.options import options
-import server
-import tempfile
 import os
+import tempfile
+
+from tornado.options import options
+from tornado.testing import AsyncHTTPTestCase
+
+from blockserver import server
 
 options.debug = True
 options.dummy = True

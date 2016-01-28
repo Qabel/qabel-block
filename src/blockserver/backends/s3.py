@@ -20,15 +20,14 @@ class Transfer:
         self.transfer = boto3.s3.transfer.S3Transfer(client, config)
         self.s3 = boto3.resource('s3')
 
-    def store_file(self, prefix, file_path, file):
+    def store(self, prefix, file_path, file):
         self, self.transfer.upload_file(file, BUCKET, file_key(prefix, file_path))
 
-    def retrieve_file(self, prefix, file_path):
+    def retrieve(self, prefix, file_path):
         try:
             with tempfile.NamedTemporaryFile('wb', delete=False) as temp:
                 self.transfer.download_file(BUCKET, file_key(prefix, file_path), temp.name)
             return temp.name
         except ClientError:
             return None
-
 
