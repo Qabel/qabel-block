@@ -8,7 +8,6 @@ from blockserver import server
 
 options.debug = True
 options.dummy = True
-options.noauth = True
 app = server.make_app()
 
 

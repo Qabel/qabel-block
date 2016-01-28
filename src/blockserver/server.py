@@ -14,13 +14,14 @@ define('dummy', default=False)
 define('transfers', default=10)
 define('port', default='8888')
 define('noauth', default=False)
+define('magicauth', default="Token MAGICFARYDUST")
 
 logger = logging.getLogger(__name__)
 
 async def check_auth(auth, prefix, file_path, action):
     gen.sleep(1)
     if action == 'POST':
-        return options.noauth or auth == "Token MAGICFARYDUST"
+        return options.noauth or auth == options.magicauth
     else:
         return True
 
