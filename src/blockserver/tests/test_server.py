@@ -18,10 +18,12 @@ class ServerTestCase(AsyncHTTPTestCase):
         super(ServerTestCase, self).setUp()
         dummy.files = {}
         options.dummy = self.use_dummy
+        options.dummy_auth = True
 
     def tearDown(self):
         dummy.files = {}
         options.dummy = False
+        options.dummy_auth = False
 
     def get_app(self):
         return app

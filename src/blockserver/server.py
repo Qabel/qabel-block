@@ -4,6 +4,7 @@ import tornado
 import tornado.httpserver
 from tornado import concurrent
 from tornado import gen
+from tornado.httpclient import AsyncHTTPClient
 from tornado.options import define, options
 from tornado.web import Application, RequestHandler, stream_request_body
 import tempfile
@@ -14,12 +15,25 @@ define('dummy', default=False)
 define('transfers', default=10)
 define('port', default='8888')
 define('noauth', default=False)
+define('dummy_auth', default=False)
 define('magicauth', default="Token MAGICFARYDUST")
+define('accountingserver', default="http://localhost:8000")
 
 logger = logging.getLogger(__name__)
 
 async def check_auth(auth, prefix, file_path, action):
-    gen.sleep(1)
+    if options.dummy_auth:
+        return await dummy_auth(auth, prefix, file_path, action)
+    http_client = AsyncHTTPClient()
+    response = await http_client.fetch(
+        options.accountingserver + '/api/v0/auth/' + prefix + '/' + file_path,
+        method=action, headers={'Authorization': auth},
+        body=b'', raise_error=False,
+    )
+    return response.code == 204
+
+
+async def dummy_auth(auth, prefix, file_path, action):
     if action == 'POST' or action == 'DELETE':
         return options.noauth or (auth == options.magicauth and prefix == 'test')
     else:
