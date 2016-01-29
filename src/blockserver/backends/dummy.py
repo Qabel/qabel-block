@@ -15,3 +15,6 @@ class Transfer:
 
     def retrieve(self, prefix, file_path):
         return files.get(file_key(prefix, file_path), None)
+
+    def delete(self, prefix, file_path):
+        files[file_key(prefix, file_path)] = None

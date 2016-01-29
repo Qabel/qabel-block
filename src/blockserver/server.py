@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 async def check_auth(auth, prefix, file_path, action):
     gen.sleep(1)
-    if action == 'POST':
-        return options.noauth or auth == options.magicauth
+    if action == 'POST' or action == 'DELETE':
+        return options.noauth or (auth == options.magicauth and prefix == 'test')
     else:
         return True
 
@@ -75,13 +75,20 @@ class FileHandler(RequestHandler):
 
     @gen.coroutine
     def post(self, prefix, file_path):
-        if self.temp:
-            self.temp.close()
-            yield self.store_file(prefix, file_path, self.temp.name)
-
-    async def head(self, prefix, file_path):
-        self.set_status(304)
+        self.temp.close()
+        yield self.store_file(prefix, file_path, self.temp.name)
+        self.set_status(204)
         self.finish()
+
+    @gen.coroutine
+    def delete(self, prefix, file_path):
+        yield self.delete_file(prefix, file_path)
+        self.set_status(204)
+        self.finish()
+
+    @concurrent.run_on_executor(executor='_thread_pool')
+    def delete_file(self, prefix, file_path):
+        return self.transfer.delete(prefix, file_path)
 
     @concurrent.run_on_executor(executor='_thread_pool')
     def store_file(self, prefix, file_path, filename):

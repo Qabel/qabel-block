@@ -31,3 +31,5 @@ class Transfer:
         except ClientError:
             return None
 
+    def delete(self, prefix, file_path):
+        self.s3.Object(BUCKET, file_key(prefix, file_path)).delete()
