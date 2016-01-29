@@ -6,7 +6,7 @@ from tornado import concurrent
 from tornado import gen
 from tornado.options import define, options
 from tornado.web import Application, RequestHandler, stream_request_body
-from tornadostreamform.multipart_streamer import MultiPartStreamer
+import tempfile
 
 define('debug', default=False)
 define('asyncio', default=False)
@@ -52,36 +52,32 @@ class FileHandler(RequestHandler):
         if not await check_auth(auth, prefix, file_path, self.request.method):
             self.auth = False
             self.send_error(403, reason="Not authorized for this prefix")
+            return
         else:
             self.auth = True
         if self.request.method == 'POST':
-            self.streamer = MultiPartStreamer(0)
+            self.temp = tempfile.NamedTemporaryFile(delete=False)
 
     async def data_received(self, chunk):
         if not self.auth:
             self.send_error()
-        self.streamer.data_received(chunk)
+            return
+        self.temp.write(chunk)
 
     @gen.coroutine
     def get(self, prefix, file_path):
-        body = yield self.retrieve_file(prefix, file_path)
-        if body is None:
+        path = yield self.retrieve_file(prefix, file_path)
+        if path is None:
             self.send_error(404)
             return
-        with open(body, 'rb') as f_in:
-            content = f_in.read()
-            self.write(content)
+        self.write(open(path, 'rb').read())
         self.finish()
 
     @gen.coroutine
     def post(self, prefix, file_path):
-        if self.streamer:
-            self.streamer.data_complete()
-            if not len(self.streamer.parts) == 1:
-                self.send_error(400, reason="No file found")
-                return
-            yield self.store_file(prefix, file_path, self.streamer.parts[0].f_out.name)
-            self.streamer.release_parts()
+        if self.temp:
+            self.temp.close()
+            yield self.store_file(prefix, file_path, self.temp.name)
 
     async def head(self, prefix, file_path):
         self.set_status(304)

@@ -21,7 +21,7 @@ class Transfer:
         self.s3 = boto3.resource('s3')
 
     def store(self, prefix, file_path, file):
-        self, self.transfer.upload_file(file, BUCKET, file_key(prefix, file_path))
+        self.transfer.upload_file(file, BUCKET, file_key(prefix, file_path))
 
     def retrieve(self, prefix, file_path):
         try:
