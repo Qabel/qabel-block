@@ -34,10 +34,7 @@ async def check_auth(auth, prefix, file_path, action):
 
 
 async def dummy_auth(auth, prefix, file_path, action):
-    if action == 'POST' or action == 'DELETE':
-        return options.noauth or (auth == options.magicauth and prefix == 'test')
-    else:
-        return True
+    return options.noauth or (auth == options.magicauth and prefix == 'test')
 
 
 @stream_request_body

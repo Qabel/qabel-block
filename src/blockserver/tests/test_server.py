@@ -1,60 +1,77 @@
-from tornado.options import options
-from tornado.testing import AsyncHTTPTestCase
+import random
+import string
 
+import pytest
+from tornado.options import options
 from blockserver import server
-from blockserver.backends import dummy
 
 options.debug = True
-app = server.make_app()
+options.dummy_auth = True
+application = server.make_app()
 
-PATH = '/files/test/bar'
+
+@pytest.fixture
+def headers():
+    return {'Authorization': 'Token MAGICFARYDUST'}
 
 
-class ServerTestCase(AsyncHTTPTestCase):
+@pytest.fixture
+def path(base_url):
+    random_name = ''.join(random.choice(string.ascii_lowercase + string.digits)
+                          for _ in range(12))
+    return base_url + '/files/test/' + random_name
 
-    use_dummy = True
 
-    def setUp(self):
-        super(ServerTestCase, self).setUp()
+@pytest.yield_fixture
+def backend(request):
+    switch_to = (request.param == 'dummy')
+    before = options.dummy
+    options.dummy = switch_to
+    if options.dummy:
+        from blockserver.backends import dummy
         dummy.files = {}
-        options.dummy = self.use_dummy
-        options.dummy_auth = True
-
-    def tearDown(self):
-        dummy.files = {}
-        options.dummy = False
-        options.dummy_auth = False
-
-    def get_app(self):
-        return app
-
-    def headers(self):
-        return {'Authorization': 'Token MAGICFARYDUST'}
-
-    def test_not_found(self):
-        response = self.fetch(PATH)
-        self.assertEqual(response.code, 404)
-
-    def test_no_body(self):
-        response = self.fetch(PATH, method='POST', body=b'', headers=self.headers())
-        self.assertEqual(response.code, 204)
-
-    def test_no_auth(self):
-        response = self.fetch(PATH, method='POST', body=b'')
-        self.assertEqual(response.code, 403)
-
-    def test_normal_cycle(self):
-        response = self.fetch(PATH, method='POST', body=b'Dummy', headers=self.headers())
-        self.assertEqual(response.code, 204)
-        response = self.fetch(PATH, method='GET')
-        self.assertEqual(response.code, 200)
-        self.assertEqual(response.body, b'Dummy')
-        response = self.fetch(PATH, method='DELETE', headers=self.headers())
-        self.assertEqual(response.code, 204)
-        response = self.fetch(PATH, method='GET')
-        self.assertEqual(response.code, 404)
+    yield
+    options.dummy = before
 
 
-class S3ServerTestCase(ServerTestCase):
-    use_dummy = False
+@pytest.fixture
+def app():
+    return application
 
+
+@pytest.mark.gen_test
+def test_not_found(backend, http_client, path):
+    response = yield http_client.fetch(path, raise_error=False)
+    assert response.code == 404
+
+
+@pytest.mark.gen_test
+def test_no_body(backend, http_client, path, headers):
+    response = yield http_client.fetch(path, method='POST', body=b'', headers=headers)
+    assert response.code == 204
+
+
+@pytest.mark.gen_test
+def test_no_auth(http_client, path):
+    response = yield http_client.fetch(path, method='GET', raise_error=False)
+    assert response.code == 403
+
+
+@pytest.mark.gen_test
+def test_normal_cycle(backend, http_client, path, headers):
+    response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers)
+    assert response.code == 204
+    response = yield http_client.fetch(path, method='GET', headers=headers)
+    assert response.body == b'Dummy'
+    response = yield http_client.fetch(path, method='DELETE', headers=headers)
+    assert response.code == 204
+    response = yield http_client.fetch(path, method='GET', headers=headers, raise_error=False)
+    assert response.code == 404
+
+
+
+
+@pytest.mark.gen_test
+def test_not_found(backend, http_client, base_url, path, headers):
+    response = yield http_client.fetch(path, headers=headers, raise_error=False)
+    assert response.code == 404
