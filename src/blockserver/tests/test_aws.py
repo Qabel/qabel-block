@@ -1,7 +1,11 @@
 from blockserver.backends.s3 import Transfer
+from blockserver.backends.util import StorageObject
+
 
 def test_basic(testfile):
     t = Transfer()
-    t.store('foo', 'bar', testfile)
-    assert open(t.retrieve('foo', 'bar'), 'rb').read() == \
-           open(testfile, 'rb').read()
+    storage_object = StorageObject('foo', 'bar', None, testfile)
+    uploaded = t.store(storage_object)
+    assert uploaded.etag is not None
+    downloaded = t.retrieve(StorageObject('foo', 'bar', None, None))
+    assert uploaded.etag == downloaded.etag

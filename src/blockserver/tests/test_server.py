@@ -69,9 +69,35 @@ def test_normal_cycle(backend, http_client, path, headers):
     assert response.code == 404
 
 
-
-
 @pytest.mark.gen_test
 def test_not_found(backend, http_client, base_url, path, headers):
     response = yield http_client.fetch(path, headers=headers, raise_error=False)
     assert response.code == 404
+
+
+@pytest.mark.gen_test
+def test_etag_set(backend, http_client, path, headers):
+    response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers)
+    assert response.code == 204
+    etag = response.headers.get('ETag', None)
+    assert etag
+
+
+@pytest.mark.gen_test
+def test_etag_not_modified(backend, http_client, path, headers):
+    response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers)
+    assert response.code == 204
+    etag = response.headers['ETag']
+    headers['If-None-Match'] = etag
+    response = yield http_client.fetch(path, method='GET', headers=headers, raise_error=False)
+    assert response.code == 304
+    assert len(response.body) == 0
+
+
+@pytest.mark.gen_test
+def test_etag_modified(backend, http_client, path, headers):
+    response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers)
+    assert response.code == 204
+    headers['If-None-Match'] = "anothertag"
+    response = yield http_client.fetch(path, method='GET', headers=headers)
+    assert response.code == 200

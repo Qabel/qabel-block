@@ -9,6 +9,8 @@ from tornado.options import define, options
 from tornado.web import Application, RequestHandler, stream_request_body
 import tempfile
 
+from blockserver.backends.util import StorageObject
+
 define('debug', default=False)
 define('asyncio', default=False)
 define('dummy', default=False)
@@ -77,18 +79,25 @@ class FileHandler(RequestHandler):
 
     @gen.coroutine
     def get(self, prefix, file_path):
-        path = yield self.retrieve_file(prefix, file_path)
-        if path is None:
+        etag = self.request.headers.get('If-None-Match', None)
+        storage_object = yield self.retrieve_file(prefix, file_path, etag)
+        if storage_object is None:
             self.send_error(404)
             return
-        self.write(open(path, 'rb').read())
+        if storage_object.local_file is None:
+            self.set_status(304)
+        else:
+            with open(storage_object.local_file, 'rb') as f_in:
+                for chunk in iter(lambda: f_in.read(8192), b''):
+                    self.write(chunk)
         self.finish()
 
     @gen.coroutine
     def post(self, prefix, file_path):
         self.temp.close()
-        yield self.store_file(prefix, file_path, self.temp.name)
+        storage_object = yield self.store_file(prefix, file_path, self.temp.name)
         self.set_status(204)
+        self.set_header('ETag', storage_object.etag)
         self.finish()
 
     @gen.coroutine
@@ -99,15 +108,15 @@ class FileHandler(RequestHandler):
 
     @concurrent.run_on_executor(executor='_thread_pool')
     def delete_file(self, prefix, file_path):
-        return self.transfer.delete(prefix, file_path)
+        return self.transfer.delete(StorageObject(prefix, file_path, None, None))
 
     @concurrent.run_on_executor(executor='_thread_pool')
     def store_file(self, prefix, file_path, filename):
-        return self.transfer.store(prefix, file_path, filename)
+        return self.transfer.store(StorageObject(prefix, file_path, None, filename))
 
     @concurrent.run_on_executor(executor='_thread_pool')
-    def retrieve_file(self, prefix, file_path):
-        return self.transfer.retrieve(prefix, file_path)
+    def retrieve_file(self, prefix, file_path, etag):
+        return self.transfer.retrieve(StorageObject(prefix, file_path, etag, None))
 
 
 def main():
