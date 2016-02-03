@@ -76,12 +76,20 @@ def test_not_found(backend, http_client, base_url, path, headers):
 
 
 @pytest.mark.gen_test
-def test_etag_set(backend, http_client, path, headers):
+def test_etag_set_on_post(backend, http_client, path, headers):
     response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers)
     assert response.code == 204
     etag = response.headers.get('ETag', None)
     assert etag
 
+@pytest.mark.gen_test
+def test_etag_set_on_get(backend, http_client, path, headers):
+    response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers)
+    etag = response.headers['ETag']
+    assert len(etag) > 0
+    response = yield http_client.fetch(path, method='GET', headers=headers, raise_error=False)
+    assert response.code == 200
+    assert response.headers['ETag'] == etag
 
 @pytest.mark.gen_test
 def test_etag_not_modified(backend, http_client, path, headers):

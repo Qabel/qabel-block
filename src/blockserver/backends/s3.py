@@ -26,7 +26,7 @@ class Transfer:
         obj = self.s3.Object(BUCKET, file_key(storage_object))
         try:
             if storage_object.etag:
-                response = obj.get(IfNoneMatch=storage_object.etag, )
+                response = obj.get(IfNoneMatch=storage_object.etag)
             else:
                 response = obj.get()
         except ClientError as e:

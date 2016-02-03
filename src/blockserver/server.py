@@ -84,6 +84,7 @@ class FileHandler(RequestHandler):
         if storage_object is None:
             self.send_error(404)
             return
+        self.set_header('ETag', storage_object.etag)
         if storage_object.local_file is None:
             self.set_status(304)
         else:
