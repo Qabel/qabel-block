@@ -27,10 +27,10 @@ async def check_auth(auth, prefix, file_path, action):
     if options.dummy_auth:
         return await dummy_auth(auth, prefix, file_path, action)
     http_client = AsyncHTTPClient()
+    url = options.accountingserver + '/api/v0/auth/' + prefix + '/' + file_path
     response = await http_client.fetch(
-        options.accountingserver + '/api/v0/auth/' + prefix + '/' + file_path,
-        method=action, headers={'Authorization': auth},
-        body=b'', raise_error=False,
+        url, method=action, headers={'Authorization': auth},
+        body=b'' if action == 'POST' else None, raise_error=False,
     )
     return response.code == 204
 
@@ -61,8 +61,8 @@ class FileHandler(RequestHandler):
         except KeyError:
             self.send_error(403)
             return
-        auth = self.request.headers.get('Authorization', None)
-        if not await check_auth(auth, prefix, file_path, self.request.method):
+        self.auth_header = self.request.headers.get('Authorization', None)
+        if not await check_auth(self.auth_header, prefix, file_path, self.request.method):
             self.auth = False
             self.send_error(403, reason="Not authorized for this prefix")
             return

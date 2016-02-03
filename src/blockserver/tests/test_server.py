@@ -1,32 +1,11 @@
-import random
-import string
-
 import pytest
-from tornado.options import options
 from blockserver import server
+from tornado.options import options
+from glinda.testing import services
 
 options.debug = True
 options.dummy_auth = True
 application = server.make_app()
-
-
-@pytest.fixture
-def headers():
-    return {'Authorization': 'Token MAGICFARYDUST'}
-
-
-
-
-@pytest.yield_fixture
-def backend(request):
-    switch_to = (request.param == 'dummy')
-    before = options.dummy
-    options.dummy = switch_to
-    if options.dummy:
-        from blockserver.backends import dummy
-        dummy.files = {}
-    yield
-    options.dummy = before
 
 
 @pytest.fixture
@@ -86,6 +65,7 @@ def test_etag_set_on_get(backend, http_client, path, headers):
     assert response.code == 200
     assert response.headers['ETag'] == etag
 
+
 @pytest.mark.gen_test
 def test_etag_not_modified(backend, http_client, path, headers):
     response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers)
@@ -104,3 +84,33 @@ def test_etag_modified(backend, http_client, path, headers):
     headers['If-None-Match'] = "anothertag"
     response = yield http_client.fetch(path, method='GET', headers=headers)
     assert response.code == 200
+
+
+@pytest.mark.gen_test
+def test_auth_backend_called(http_client, path, auth_path, headers, auth_server):
+    auth_server.add_response(services.Request('POST', auth_path), services.Response(204))
+    response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers,
+                                       raise_error=False)
+    auth_request = auth_server.get_request(auth_path)
+    assert len(auth_request.body) == 0
+    assert auth_request.headers['Authorization'] == headers['Authorization']
+    assert response.code == 204
+
+
+@pytest.mark.gen_test
+def test_auth_backend_called_for_get(http_client, path, auth_path, headers, auth_server):
+    auth_server.add_response(services.Request('GET', auth_path), services.Response(204))
+    yield http_client.fetch(path, method='GET', headers=headers,
+                                       raise_error=False)
+    auth_request = auth_server.get_request(auth_path)
+    assert len(auth_request.body) == 0
+    assert auth_request.headers['Authorization'] == headers['Authorization']
+
+
+@pytest.mark.gen_test
+def test_auth_backend_called_for_post_and_denied(
+        http_client, path, auth_path, headers, auth_server):
+    auth_server.add_response(services.Request('POST', auth_path), services.Response(403))
+    response = yield http_client.fetch(path, method='POST', headers=headers, body=b'Dummy',
+                                       raise_error=False)
+    assert response.code == 403
