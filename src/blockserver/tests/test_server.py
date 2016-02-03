@@ -15,11 +15,6 @@ def headers():
     return {'Authorization': 'Token MAGICFARYDUST'}
 
 
-@pytest.fixture
-def path(base_url):
-    random_name = ''.join(random.choice(string.ascii_lowercase + string.digits)
-                          for _ in range(12))
-    return base_url + '/files/test/' + random_name
 
 
 @pytest.yield_fixture

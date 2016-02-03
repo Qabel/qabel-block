@@ -141,6 +141,6 @@ def main():
 
 def make_app():
     application = Application([
-        (r'^api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[\d\w-]+)', FileHandler),
+        (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[\d\w-]+)', FileHandler),
     ], debug=options.debug)
     return application
