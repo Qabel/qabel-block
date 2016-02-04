@@ -3,14 +3,19 @@ from blockserver import server
 from tornado.options import options
 from glinda.testing import services
 
+from blockserver.backends import dummy
+from blockserver.backends import s3
+
 options.debug = True
 options.dummy_auth = True
-application = server.make_app()
 
 
 @pytest.fixture
 def app():
-    return application
+    return server.make_app(
+            transfer_cls=lambda: dummy.Transfer if options.dummy else s3.Transfer,
+            auth_callback=lambda: server.dummy_auth if options.dummy_auth else server.check_auth,
+            log_callback=lambda: None, debug=False)
 
 
 @pytest.mark.gen_test
@@ -87,7 +92,7 @@ def test_etag_modified(backend, http_client, path, headers):
 
 
 @pytest.mark.gen_test
-def test_auth_backend_called(http_client, path, auth_path, headers, auth_server):
+def test_auth_backend_called(app, http_client, path, auth_path, headers, auth_server):
     auth_server.add_response(services.Request('POST', auth_path), services.Response(204))
     response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers,
                                        raise_error=False)
@@ -98,7 +103,7 @@ def test_auth_backend_called(http_client, path, auth_path, headers, auth_server)
 
 
 @pytest.mark.gen_test
-def test_auth_backend_called_for_get(http_client, path, auth_path, headers, auth_server):
+def test_auth_backend_called_for_get(app, http_client, path, auth_path, headers, auth_server):
     auth_server.add_response(services.Request('GET', auth_path), services.Response(204))
     yield http_client.fetch(path, method='GET', headers=headers,
                                        raise_error=False)
@@ -109,7 +114,7 @@ def test_auth_backend_called_for_get(http_client, path, auth_path, headers, auth
 
 @pytest.mark.gen_test
 def test_auth_backend_called_for_post_and_denied(
-        http_client, path, auth_path, headers, auth_server):
+        app, http_client, path, auth_path, headers, auth_server):
     auth_server.add_response(services.Request('POST', auth_path), services.Response(403))
     response = yield http_client.fetch(path, method='POST', headers=headers, body=b'Dummy',
                                        raise_error=False)

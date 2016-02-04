@@ -8,22 +8,26 @@ from tornado.httpclient import AsyncHTTPClient
 from tornado.options import define, options
 from tornado.web import Application, RequestHandler, stream_request_body
 import tempfile
+from typing import Callable
+from blockserver.backends.util import StorageObject, Transfer
 
-from blockserver.backends.util import StorageObject
-
-define('debug', default=False)
-define('asyncio', default=False)
-define('dummy', default=False)
-define('transfers', default=10)
+define('debug', help="Enable debug output for tornado", default=False)
+define('asyncio', help="Run on the asyncio loop instead of the tornado IOLoop", default=False)
+define('dummy', help="Dummy storage backend instead of s3 backend", default=False)
+define('transfers', help="Thread pool size for transfers", default=10)
 define('port', default='8888')
-define('noauth', default=False)
-define('dummy_auth', default=False)
+define('apisecret', help="API_SECRET of the accounting server", default='secret')
+define('noauth', help="Disable authentication", default=False)
+define('dummy_auth', help="Authenticate with the magicauth-token", default=False)
 define('magicauth', default="Token MAGICFARYDUST")
-define('accountingserver', default="http://localhost:8000")
-
+define('accountingserver', help="Base url to the accounting server", default="http://localhost:8000")
+define('dummylog', help="Instead of calling the accounting server for logging, log to stdout",
+       default=False)
 logger = logging.getLogger(__name__)
 
 async def check_auth(auth, prefix, file_path, action):
+    if options.noauth:
+        return True
     if options.dummy_auth:
         return await dummy_auth(auth, prefix, file_path, action)
     http_client = AsyncHTTPClient()
@@ -36,7 +40,7 @@ async def check_auth(auth, prefix, file_path, action):
 
 
 async def dummy_auth(auth, prefix, file_path, action):
-    return options.noauth or (auth == options.magicauth and prefix == 'test')
+    return auth == options.magicauth and prefix == 'test'
 
 
 @stream_request_body
@@ -44,13 +48,13 @@ class FileHandler(RequestHandler):
     auth = None
     streamer = None
 
-    def initialize(self):
+    def initialize(self, transfer_cls: Callable[[], Callable[[], Transfer]],
+                   auth_callback: Callable[[], Callable[[str, str, str, str], bool]],
+                   log_callback: Callable[[], Callable[[str, str, str, int], None]]):
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(options.transfers)
-        if options.dummy:
-            from .backends.dummy import Transfer
-        else:
-            from .backends.s3 import Transfer
-        self.transfer = Transfer()
+        self.transfer = transfer_cls()()
+        self.auth_callback = auth_callback()
+        self.log_callback = log_callback()
 
     async def prepare(self):
         self.auth = None
@@ -62,7 +66,7 @@ class FileHandler(RequestHandler):
             self.send_error(403)
             return
         self.auth_header = self.request.headers.get('Authorization', None)
-        if not await check_auth(self.auth_header, prefix, file_path, self.request.method):
+        if not await self.auth_callback(self.auth_header, prefix, file_path, self.request.method):
             self.auth = False
             self.send_error(403, reason="Not authorized for this prefix")
             return
@@ -122,7 +126,15 @@ class FileHandler(RequestHandler):
 
 def main():
     tornado.options.parse_command_line()
-    application = make_app()
+    if options.dummy:
+        from blockserver.backends.dummy import Transfer
+    else:
+        from blockserver.backends.s3 import Transfer
+    application = make_app(
+        transfer_cls=lambda: Transfer,
+        auth_callback=lambda: dummy_auth if options.dummy else check_auth,
+        log_callback=lambda: None, debug=options.debug
+    )
     if options.debug:
         application.listen(options.port)
     else:
@@ -139,8 +151,12 @@ def main():
         IOLoop.current().start()
 
 
-def make_app():
+def make_app(transfer_cls, auth_callback, log_callback, debug):
     application = Application([
-        (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[\d\w-]+)', FileHandler),
-    ], debug=options.debug)
+        (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[\d\w-]+)', FileHandler, dict(
+            transfer_cls=transfer_cls,
+            auth_callback=auth_callback,
+            log_callback=log_callback,
+        ))
+    ], debug=debug)
     return application
