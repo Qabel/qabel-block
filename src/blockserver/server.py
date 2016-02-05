@@ -48,9 +48,18 @@ class FileHandler(RequestHandler):
     auth = None
     streamer = None
 
-    def initialize(self, transfer_cls: Callable[[], Callable[[], Transfer]],
-                   auth_callback: Callable[[], Callable[[str, str, str, str], bool]],
-                   log_callback: Callable[[], Callable[[str, str, str, int], None]]):
+    def initialize(self,
+                   transfer_cls: Callable[[], Callable[[], Transfer]]=None,
+                   auth_callback: Callable[[], Callable[[str, str, str, str], bool]]=None,
+                   log_callback: Callable[[], Callable[[str, str, str, int], None]]=None,
+                   concurrent_transfers: int=10):
+        """
+        :param transfer_cls: A function that returns a Transfer class
+        :param auth_callback: A function that returns a callback used for authorization
+        :param log_callback: A function that returns a callback used to log an action
+        :param concurrent_transfers: Size of the thread pool used for transfers
+        :return:
+        """
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(options.transfers)
         self.transfer = transfer_cls()()
         self.auth_callback = auth_callback()
@@ -127,13 +136,14 @@ class FileHandler(RequestHandler):
 def main():
     tornado.options.parse_command_line()
     if options.dummy:
-        from blockserver.backends.dummy import Transfer
+        from blockserver.backends.dummy import Transfer as DummyTransfer
     else:
-        from blockserver.backends.s3 import Transfer
+        from blockserver.backends.s3 import Transfer as S3Transfer
     application = make_app(
-        transfer_cls=lambda: Transfer,
+        transfer_cls=lambda: DummyTransfer if options.dummy else S3Transfer,
         auth_callback=lambda: dummy_auth if options.dummy else check_auth,
-        log_callback=lambda: None, debug=options.debug
+        log_callback=lambda: None, debug=options.debug,
+        transfers=options.transfers,
     )
     if options.debug:
         application.listen(options.port)
@@ -151,12 +161,13 @@ def main():
         IOLoop.current().start()
 
 
-def make_app(transfer_cls, auth_callback, log_callback, debug):
+def make_app(transfer_cls, auth_callback, log_callback, transfers, debug):
     application = Application([
         (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[\d\w-]+)', FileHandler, dict(
             transfer_cls=transfer_cls,
             auth_callback=auth_callback,
             log_callback=log_callback,
+            concurrent_transfers=transfers,
         ))
     ], debug=debug)
     return application

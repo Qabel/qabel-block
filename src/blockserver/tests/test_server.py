@@ -15,7 +15,9 @@ def app():
     return server.make_app(
             transfer_cls=lambda: dummy.Transfer if options.dummy else s3.Transfer,
             auth_callback=lambda: server.dummy_auth if options.dummy_auth else server.check_auth,
-            log_callback=lambda: None, debug=False)
+            log_callback=lambda: None,
+            transfers=10,
+            debug=False)
 
 
 @pytest.mark.gen_test
