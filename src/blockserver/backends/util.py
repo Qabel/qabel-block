@@ -18,6 +18,6 @@ class Transfer:
         pass
 
     @abstractmethod
-    def delete(self, storage_object: StorageObject):
+    def delete(self, storage_object: StorageObject) -> int:
         pass
 

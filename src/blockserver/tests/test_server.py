@@ -6,16 +6,28 @@ from glinda.testing import services
 from blockserver.backends import dummy
 from blockserver.backends import s3
 
+import json
+
+API_QUOTA = '/api/v0/quota'
+
 options.debug = True
 options.dummy_auth = True
+options.dummy_log = True
+
+@pytest.fixture
+def mock_log():
+    async def log(*args):
+        log.log.append(args)
+    log.log = []
+    return log
 
 
 @pytest.fixture
-def app():
+def app(mock_log):
     return server.make_app(
             transfer_cls=lambda: dummy.Transfer if options.dummy else s3.Transfer,
             auth_callback=lambda: server.dummy_auth if options.dummy_auth else server.check_auth,
-            log_callback=lambda: None,
+            log_callback=lambda: mock_log if options.dummy_log else server.send_log,
             transfers=10,
             debug=False)
 
@@ -94,19 +106,35 @@ def test_etag_modified(backend, http_client, path, headers):
 
 
 @pytest.mark.gen_test
-def test_auth_backend_called(app, http_client, path, auth_path, headers, auth_server):
+def test_auth_backend_called(app, http_client, path, auth_path, headers, auth_server, file_path):
+    body = b'Dummy'
+    _, prefix, file_name = file_path.split('/')
+    size = len(body)
     auth_server.add_response(services.Request('POST', auth_path), services.Response(204))
-    response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers,
+    auth_server.add_response(services.Request('DELETE', auth_path), services.Response(204))
+    auth_server.add_response(services.Request('POST', API_QUOTA), services.Response(204))
+    response = yield http_client.fetch(path, method='POST', body=body, headers=headers,
                                        raise_error=False)
     auth_request = auth_server.get_request(auth_path)
     assert len(auth_request.body) == 0
     assert auth_request.headers['Authorization'] == headers['Authorization']
+    assert auth_request.headers['APISECRET'] == options.apisecret
+    assert response.code == 204
+
+    log_request = auth_server.get_request(API_QUOTA)
+    body = json.loads(log_request.body.decode('UTF-8'))
+    assert body == {'prefix': prefix, 'file_path': file_name, 'action': 'store', 'size': size}
+    assert log_request.headers['Authorization'] == headers['Authorization']
+    assert log_request.headers['APISECRET'] == options.apisecret
+
+    response = yield http_client.fetch(path, method='DELETE', headers=headers, raise_error=False)
     assert response.code == 204
 
 
 @pytest.mark.gen_test
 def test_auth_backend_called_for_get(app, http_client, path, auth_path, headers, auth_server):
     auth_server.add_response(services.Request('GET', auth_path), services.Response(204))
+    auth_server.add_response(services.Request('POST', '/api/v0/quota'), services.Response(204))
     yield http_client.fetch(path, method='GET', headers=headers,
                                        raise_error=False)
     auth_request = auth_server.get_request(auth_path)
@@ -121,3 +149,57 @@ def test_auth_backend_called_for_post_and_denied(
     response = yield http_client.fetch(path, method='POST', headers=headers, body=b'Dummy',
                                        raise_error=False)
     assert response.code == 403
+
+
+@pytest.mark.gen_test
+def test_log_is_called(app, http_client, path, headers, mock_log):
+    body = b'Dummy'
+    size = len(body)
+    yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    log = mock_log.log
+    assert len(log) == 1
+    assert log[0][0] == headers['Authorization']
+    assert log[0][2] == 'store'
+    assert log[0][3] == size
+    yield http_client.fetch(path, method='GET', headers=headers)
+    assert len(log) == 2
+    assert log[1][2] == 'get'
+    assert log[1][3] == size
+    yield http_client.fetch(path, method='DELETE', headers=headers)
+    assert len(log) == 3
+    assert log[2][2] == 'store'
+    assert log[2][3] == -size
+
+
+@pytest.mark.gen_test
+def test_send_log(app, http_client, path, auth_path, headers, auth_server, file_path):
+    body = b'Dummy'
+    size = len(body)
+    _, prefix, file_name = file_path.split('/')
+    auth_server.add_response(services.Request('POST', API_QUOTA), services.Response(204))
+    auth_server.add_response(services.Request('POST', auth_path), services.Response(204))
+    auth_server.add_response(services.Request('GET', auth_path), services.Response(204))
+    auth_server.add_response(services.Request('DELETE', auth_path), services.Response(204))
+    yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    yield http_client.fetch(path, method='GET', headers=headers)
+    yield http_client.fetch(path, method='DELETE', headers=headers)
+    (store, s_body), (get, g_body), (delete, d_body) = (
+        (request, json.loads(request.body.decode('UTF-8')))
+        for request in auth_server.get_requests_for(API_QUOTA))
+
+    for request in (store, get, delete):
+        assert request.headers['Authorization'] == headers['Authorization']
+        assert request.headers['APISECRET'] == options.apisecret
+
+    for body in (s_body, g_body, d_body):
+        assert body['prefix'] == prefix
+        assert body['file_path'] == file_name
+
+    assert s_body['size'] == size
+    assert g_body['size'] == size
+    assert d_body['size'] == -size
+
+    assert s_body['action'] == 'store'
+    assert g_body['action'] == 'get'
+    assert d_body['action'] == 'store'
+

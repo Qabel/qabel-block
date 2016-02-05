@@ -10,6 +10,8 @@ from tornado.web import Application, RequestHandler, stream_request_body
 import tempfile
 from typing import Callable
 from blockserver.backends.util import StorageObject, Transfer
+import os
+import json
 
 define('debug', help="Enable debug output for tornado", default=False)
 define('asyncio', help="Run on the asyncio loop instead of the tornado IOLoop", default=False)
@@ -21,7 +23,7 @@ define('noauth', help="Disable authentication", default=False)
 define('dummy_auth', help="Authenticate with the magicauth-token", default=False)
 define('magicauth', default="Token MAGICFARYDUST")
 define('accountingserver', help="Base url to the accounting server", default="http://localhost:8000")
-define('dummylog', help="Instead of calling the accounting server for logging, log to stdout",
+define('dummy_log', help="Instead of calling the accounting server for logging, log to stdout",
        default=False)
 logger = logging.getLogger(__name__)
 
@@ -33,7 +35,7 @@ async def check_auth(auth, prefix, file_path, action):
     http_client = AsyncHTTPClient()
     url = options.accountingserver + '/api/v0/auth/' + prefix + '/' + file_path
     response = await http_client.fetch(
-        url, method=action, headers={'Authorization': auth},
+        url, method=action, headers={'Authorization': auth, 'APISECRET': options.apisecret},
         body=b'' if action == 'POST' else None, raise_error=False,
     )
     return response.code == 204
@@ -41,6 +43,24 @@ async def check_auth(auth, prefix, file_path, action):
 
 async def dummy_auth(auth, prefix, file_path, action):
     return auth == options.magicauth and prefix == 'test'
+
+
+async def console_log(auth, storage_object: StorageObject, action: str, size: int):
+    print("{prefix} / {file_path} {action} {size}".format(
+        prefix=storage_object.prefix,
+        file_path=storage_object.file_path,
+        action=action,
+        size=size
+    ))
+
+async def send_log(auth, storage_object: StorageObject, action: str, size: int):
+    http_client = AsyncHTTPClient()
+    url = options.accountingserver + '/api/v0/quota'
+    payload = {'prefix': storage_object.prefix, 'file_path': storage_object.file_path,
+               'action': action, 'size': size}
+    await http_client.fetch(
+            url, method='POST', headers={'Authorization': auth, 'APISECRET': options.apisecret},
+            body=json.dumps(payload), raise_error=False)
 
 
 @stream_request_body
@@ -51,7 +71,7 @@ class FileHandler(RequestHandler):
     def initialize(self,
                    transfer_cls: Callable[[], Callable[[], Transfer]]=None,
                    auth_callback: Callable[[], Callable[[str, str, str, str], bool]]=None,
-                   log_callback: Callable[[], Callable[[str, str, str, int], None]]=None,
+                   log_callback: Callable[[], Callable[[StorageObject, str, int], None]]=None,
                    concurrent_transfers: int=10):
         """
         :param transfer_cls: A function that returns a Transfer class
@@ -104,19 +124,27 @@ class FileHandler(RequestHandler):
             with open(storage_object.local_file, 'rb') as f_in:
                 for chunk in iter(lambda: f_in.read(8192), b''):
                     self.write(chunk)
+                size = f_in.tell()
+            yield self.log_callback(self.auth_header, storage_object, 'get', size)
         self.finish()
 
     @gen.coroutine
     def post(self, prefix, file_path):
         self.temp.close()
-        storage_object = yield self.store_file(prefix, file_path, self.temp.name)
+        size = os.path.getsize(self.temp.name)
+        storage_object, _ = yield [
+            self.store_file(prefix, file_path, self.temp.name),
+            self.log_callback(self.auth_header,
+                              StorageObject(prefix, file_path, None, None), 'store', size)]
         self.set_status(204)
         self.set_header('ETag', storage_object.etag)
         self.finish()
 
     @gen.coroutine
     def delete(self, prefix, file_path):
-        yield self.delete_file(prefix, file_path)
+        size = yield self.delete_file(prefix, file_path)
+        yield self.log_callback(self.auth_header,
+                                StorageObject(prefix, file_path, None, None), 'store', -size)
         self.set_status(204)
         self.finish()
 
@@ -142,7 +170,7 @@ def main():
     application = make_app(
         transfer_cls=lambda: DummyTransfer if options.dummy else S3Transfer,
         auth_callback=lambda: dummy_auth if options.dummy else check_auth,
-        log_callback=lambda: None, debug=options.debug,
+        log_callback=lambda: console_log, debug=options.debug,
         transfers=options.transfers,
     )
     if options.debug:

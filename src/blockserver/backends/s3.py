@@ -43,4 +43,7 @@ class Transfer:
             return storage_object._replace(local_file=temp.name, etag=response['ETag'])
 
     def delete(self, storage_object):
-        self.s3.Object(BUCKET, file_key(storage_object)).delete()
+        obj = self.s3.Object(BUCKET, file_key(storage_object))
+        size = obj.content_length
+        obj.delete()
+        return size

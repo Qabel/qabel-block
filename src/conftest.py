@@ -34,11 +34,13 @@ def service_layer():
 @pytest.yield_fixture
 def auth_server(service_layer):
     options.dummy_auth = False
+    options.dummy_log = False
     dummy_acc = options.accountingserver
     auth = service_layer['auth']  # type: services.Service
     options.accountingserver = 'http://' + auth.host
     yield auth
     options.dummy_auth = True
+    options.dummy_log = True
     options.accountingserver = dummy_acc
 
 

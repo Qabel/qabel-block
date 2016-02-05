@@ -1,6 +1,7 @@
 from blockserver.backends.s3 import file_key
 from blockserver.backends.util import StorageObject
 import random
+import os
 
 files = {}
 
@@ -25,4 +26,4 @@ class Transfer:
             return object
 
     def delete(self,  storage_object: StorageObject):
-        files[file_key(storage_object)] = None
+        return os.path.getsize(files.pop(file_key(storage_object)).local_file)
