@@ -4,7 +4,9 @@ from abc import ABC, abstractmethod
 
 StorageObject = NamedTuple('StorageObject',
                            [('prefix', str), ('file_path', str),
-                            ('etag', str), ('local_file', str)])
+                            ('etag', str), ('local_file', str),
+                            ('size', int)])
+StorageObject.__new__.__defaults__ = (None, ) * len(StorageObject._fields)
 
 
 class AbstractTransfer(ABC):

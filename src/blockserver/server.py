@@ -10,7 +10,6 @@ from tornado.web import Application, RequestHandler, stream_request_body
 import tempfile
 from typing import Callable
 from blockserver.backends.util import StorageObject, AbstractTransfer
-import os
 import json
 
 define('debug', help="Enable debug output for tornado", default=False)
@@ -24,6 +23,8 @@ define('dummy_auth', help="Authenticate with the magicauth-token", default=False
 define('magicauth', default="Token MAGICFARYDUST")
 define('accountingserver', help="Base url to the accounting server", default="http://localhost:8000")
 define('dummy_log', help="Instead of calling the accounting server for logging, log to stdout",
+       default=False)
+define('dummy_cache', help="Use an in memory cache instead of redis",
        default=False)
 logger = logging.getLogger(__name__)
 

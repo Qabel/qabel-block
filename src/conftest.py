@@ -73,17 +73,22 @@ def backend(request):
     options.dummy = before
 
 
-@pytest.yield_fixture
-def cache(cache_backend):
+@pytest.fixture
+def cache(request):
+    cache_backend = request.param
     if cache_backend == 'dummy':
         return cache_backends.DummyCache()
     if cache_backend == 'redis':
-        return cache_backends.RedisCache(host='localhost', port='6379')
+        redis = cache_backends.RedisCache(host='localhost', port='6379')
+        redis.flush()
+        return redis
 
 
 def pytest_addoption(parser):
     parser.addoption("--dummy", action="store_true",
         help="run only with the dummy backend")
+    parser.addoption("--dummy-cache", action="store_true",
+                     help="run only with the dummy cache")
 
 
 def pytest_generate_tests(metafunc):
@@ -96,4 +101,4 @@ def pytest_generate_tests(metafunc):
         backends = ['dummy']
         if not metafunc.config.option.dummy_cache:
             backends.append('redis')
-        metafunc.parametrize("cache_backend", backends, indirect=True)
+        metafunc.parametrize("cache", backends, indirect=True)
