@@ -7,7 +7,8 @@ def test_basic(testfile):
     t = Transfer()
     size = os.path.getsize(testfile)
     storage_object = StorageObject('foo', 'bar', None, testfile)
-    uploaded = t.store(storage_object)
+    uploaded, size_diff = t.store(storage_object)
+    assert size_diff == size
     assert uploaded.etag is not None
     downloaded = t.retrieve(StorageObject('foo', 'bar', None, None))
     assert uploaded.etag == downloaded.etag

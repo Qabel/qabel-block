@@ -203,3 +203,15 @@ def test_send_log(app, http_client, path, auth_path, headers, auth_server, file_
     assert g_body['action'] == 'get'
     assert d_body['action'] == 'store'
 
+
+@pytest.mark.gen_test
+def test_log_handles_overwrites(app, http_client, path, headers, mock_log):
+    body = b'Dummy'
+    body_larger = b'DummyDummy'
+    size = len(body)
+    yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    yield http_client.fetch(path, method='POST', body=body_larger, headers=headers)
+    yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    sizes = [entry[3] for entry in mock_log.log]
+    assert sizes == [size, size, -size]
+

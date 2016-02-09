@@ -1,4 +1,4 @@
-from typing import Union, NamedTuple
+from typing import Union, NamedTuple, Tuple
 from abc import ABC, abstractmethod
 
 
@@ -10,7 +10,7 @@ StorageObject = NamedTuple('StorageObject',
 class Transfer:
 
     @abstractmethod
-    def store(self, storage_object: StorageObject) -> StorageObject:
+    def store(self, storage_object: StorageObject) -> Tuple[StorageObject, int]:
         pass
 
     @abstractmethod
@@ -21,3 +21,6 @@ class Transfer:
     def delete(self, storage_object: StorageObject) -> int:
         pass
 
+
+def file_key(storage_object: StorageObject):
+    return '{}/{}'.format(storage_object.prefix, storage_object.file_path)

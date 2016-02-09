@@ -2,14 +2,10 @@ import boto3
 import tempfile
 from botocore.exceptions import ClientError
 
-from blockserver.backends.util import StorageObject
+from blockserver.backends.util import StorageObject, file_key
 
 REGION = 'eu-west-1'
 BUCKET = 'qabel'
-
-
-def file_key(storage_object: StorageObject):
-    return '{}/{}'.format(storage_object.prefix, storage_object.file_path)
 
 
 class Transfer:
@@ -18,9 +14,22 @@ class Transfer:
 
     def store(self, storage_object: StorageObject):
         obj = self.s3.Object(BUCKET, file_key(storage_object))
+        size = self.get_size(obj)
         with open(storage_object.local_file, 'rb') as f_in:
             response = obj.put(Body=f_in)
-            return storage_object._replace(etag=response['ETag'])
+            new_size = obj.content_length
+            size_diff = new_size - size
+            return storage_object._replace(etag=response['ETag']), size_diff
+
+    def get_size(self, obj):
+        try:
+            return obj.content_length
+        except ClientError as e:
+            status = e.response['ResponseMetadata']['HTTPStatusCode']
+            if status == 404:
+                return 0
+            else:
+                raise
 
     def retrieve(self, storage_object: StorageObject):
         obj = self.s3.Object(BUCKET, file_key(storage_object))
@@ -44,6 +53,6 @@ class Transfer:
 
     def delete(self, storage_object):
         obj = self.s3.Object(BUCKET, file_key(storage_object))
-        size = obj.content_length
+        size = self.get_size(obj)
         obj.delete()
         return size

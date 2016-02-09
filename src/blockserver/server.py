@@ -131,11 +131,11 @@ class FileHandler(RequestHandler):
     @gen.coroutine
     def post(self, prefix, file_path):
         self.temp.close()
-        size = os.path.getsize(self.temp.name)
-        storage_object, _ = yield [
-            self.store_file(prefix, file_path, self.temp.name),
-            self.log_callback(self.auth_header,
-                              StorageObject(prefix, file_path, None, None), 'store', size)]
+        storage_object, size_diff = yield self.store_file(
+                prefix, file_path, self.temp.name)
+        yield self.log_callback(self.auth_header,
+                                StorageObject(prefix, file_path, None, None),
+                                'store', size_diff)
         self.set_status(204)
         self.set_header('ETag', storage_object.etag)
         self.finish()
@@ -144,7 +144,8 @@ class FileHandler(RequestHandler):
     def delete(self, prefix, file_path):
         size = yield self.delete_file(prefix, file_path)
         yield self.log_callback(self.auth_header,
-                                StorageObject(prefix, file_path, None, None), 'store', -size)
+                                StorageObject(prefix, file_path, None, None),
+                                'store', -size)
         self.set_status(204)
         self.finish()
 

@@ -1,4 +1,6 @@
-glinda
+hiredis==0.2.0
+glinda==0.0.3
 boto3==1.2.3
 pytest==2.8.7
 tornado==4.3
+redis==2.10.5
