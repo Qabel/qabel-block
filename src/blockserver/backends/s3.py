@@ -2,13 +2,13 @@ import boto3
 import tempfile
 from botocore.exceptions import ClientError
 
-from blockserver.backends.util import StorageObject, file_key
+from blockserver.backends.util import StorageObject, file_key, AbstractTransfer
 
 REGION = 'eu-west-1'
 BUCKET = 'qabel'
 
 
-class Transfer:
+class S3Transfer(AbstractTransfer):
     def __init__(self):
         self.s3 = boto3.resource('s3')
 

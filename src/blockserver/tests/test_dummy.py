@@ -4,7 +4,7 @@ import os
 
 
 def test_basic(testfile):
-    t = dummy.Transfer()
+    t = dummy.DummyTransfer()
     storage_object = StorageObject('foo', 'bar', None, testfile)
     size = os.path.getsize(testfile)
     uploaded, size_diff = t.store(storage_object)

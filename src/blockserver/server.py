@@ -9,7 +9,7 @@ from tornado.options import define, options
 from tornado.web import Application, RequestHandler, stream_request_body
 import tempfile
 from typing import Callable
-from blockserver.backends.util import StorageObject, Transfer
+from blockserver.backends.util import StorageObject, AbstractTransfer
 import os
 import json
 
@@ -69,7 +69,7 @@ class FileHandler(RequestHandler):
     streamer = None
 
     def initialize(self,
-                   transfer_cls: Callable[[], Callable[[], Transfer]]=None,
+                   transfer_cls: Callable[[], Callable[[], AbstractTransfer]]=None,
                    auth_callback: Callable[[], Callable[[str, str, str, str], bool]]=None,
                    log_callback: Callable[[], Callable[[StorageObject, str, int], None]]=None,
                    concurrent_transfers: int=10):
@@ -165,9 +165,9 @@ class FileHandler(RequestHandler):
 def main():
     tornado.options.parse_command_line()
     if options.dummy:
-        from blockserver.backends.dummy import Transfer as DummyTransfer
+        from blockserver.backends.dummy import DummyTransfer
     else:
-        from blockserver.backends.s3 import Transfer as S3Transfer
+        from blockserver.backends.s3 import S3Transfer
     application = make_app(
         transfer_cls=lambda: DummyTransfer if options.dummy else S3Transfer,
         auth_callback=lambda: dummy_auth if options.dummy else check_auth,

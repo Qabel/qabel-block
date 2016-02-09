@@ -1,4 +1,4 @@
-from blockserver.backends.util import StorageObject, file_key
+from blockserver.backends.util import StorageObject, file_key, AbstractTransfer
 from typing import Tuple
 import random
 import os
@@ -6,7 +6,7 @@ import os
 files = {}
 
 
-class Transfer:
+class DummyTransfer(AbstractTransfer):
 
     def __init__(self):
         pass

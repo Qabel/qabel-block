@@ -7,7 +7,7 @@ StorageObject = NamedTuple('StorageObject',
                             ('etag', str), ('local_file', str)])
 
 
-class Transfer:
+class AbstractTransfer(ABC):
 
     @abstractmethod
     def store(self, storage_object: StorageObject) -> Tuple[StorageObject, int]:

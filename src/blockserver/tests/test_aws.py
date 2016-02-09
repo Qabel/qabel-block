@@ -1,10 +1,10 @@
-from blockserver.backends.s3 import Transfer
+from blockserver.backends.s3 import S3Transfer
 from blockserver.backends.util import StorageObject
 import os
 
 
 def test_basic(testfile):
-    t = Transfer()
+    t = S3Transfer()
     size = os.path.getsize(testfile)
     storage_object = StorageObject('foo', 'bar', None, testfile)
     uploaded, size_diff = t.store(storage_object)

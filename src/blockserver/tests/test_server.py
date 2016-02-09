@@ -25,7 +25,7 @@ def mock_log():
 @pytest.fixture
 def app(mock_log):
     return server.make_app(
-            transfer_cls=lambda: dummy.Transfer if options.dummy else s3.Transfer,
+            transfer_cls=lambda: dummy.DummyTransfer if options.dummy else s3.S3Transfer,
             auth_callback=lambda: server.dummy_auth if options.dummy_auth else server.check_auth,
             log_callback=lambda: mock_log if options.dummy_log else server.send_log,
             transfers=10,
