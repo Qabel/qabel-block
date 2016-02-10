@@ -205,7 +205,7 @@ def make_app(log_callback=None, debug=False):
             return partial(cache.RedisCache, host=options.redis_host, port=options.redis_port)
 
     if log_callback is None:
-        log_callback = lambda: console_log if options.dummy_log else send_log,
+        log_callback = lambda: console_log if options.dummy_log else send_log
 
     application = Application([
         (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[\d\w-]+)', FileHandler, dict(
