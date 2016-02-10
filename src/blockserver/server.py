@@ -24,7 +24,7 @@ define('noauth', help="Disable authentication", default=False)
 define('dummy_auth',
        help="Authenticate with this authentication token [Example: MAGICFARYDUST] "
             "for the prefix 'test'", default=None, type=str)
-define('accountingserver',
+define('accounting_host',
        help="Base url to the accounting server", default="http://localhost:8000")
 define('dummy',
        help="Use a local and temporary storage backend instead of s3 backend", default=False)
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 async def check_auth(auth, prefix, file_path, action):
     http_client = AsyncHTTPClient()
-    url = options.accountingserver + '/api/v0/auth/' + prefix + '/' + file_path
+    url = options.accounting_host + '/api/v0/auth/' + prefix + '/' + file_path
     response = await http_client.fetch(
         url, method=action, headers={'Authorization': auth, 'APISECRET': options.apisecret},
         body=b'' if action == 'POST' else None, raise_error=False,
