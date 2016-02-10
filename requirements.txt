@@ -4,3 +4,4 @@ boto3==1.2.3
 pytest==2.8.7
 tornado==4.3
 redis==2.10.5
+pytest-tornado==0.4.4
