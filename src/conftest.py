@@ -4,6 +4,7 @@ import os
 import random
 import string
 import blockserver.backends.cache as cache_backends
+from blockserver.backends import s3, dummy
 
 from glinda.testing import services
 from tornado.options import options
@@ -83,6 +84,16 @@ def cache(request):
         redis.flush()
         return redis
 
+@pytest.yield_fixture()
+def transfer(request, cache):
+    transfer_backend = request.param
+    if transfer_backend == 'dummy':
+        dummy.files = {}
+        yield dummy.DummyTransfer(cache)
+        dummy.files = {}
+    if transfer_backend == 's3':
+        yield s3.S3Transfer(cache)
+
 
 def pytest_addoption(parser):
     parser.addoption("--dummy", action="store_true",
@@ -97,6 +108,11 @@ def pytest_generate_tests(metafunc):
         if not metafunc.config.option.dummy:
             backends.append('s3')
         metafunc.parametrize("backend", backends, indirect=True)
+    if 'transfer' in metafunc.fixturenames:
+        backends = ['dummy']
+        if not metafunc.config.option.dummy:
+            backends.append('s3')
+        metafunc.parametrize("transfer", backends, indirect=True)
     if 'cache' in metafunc.fixturenames:
         backends = ['dummy']
         if not metafunc.config.option.dummy_cache:

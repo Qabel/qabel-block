@@ -2,9 +2,11 @@ import pytest
 from blockserver import server
 from tornado.options import options
 from glinda.testing import services
+from functools import partial
 
 from blockserver.backends import dummy
 from blockserver.backends import s3
+from blockserver.backends import cache
 
 import json
 
@@ -28,6 +30,7 @@ def app(mock_log):
             transfer_cls=lambda: dummy.DummyTransfer if options.dummy else s3.S3Transfer,
             auth_callback=lambda: server.dummy_auth if options.dummy_auth else server.check_auth,
             log_callback=lambda: mock_log if options.dummy_log else server.send_log,
+            cache_cls=lambda: cache.DummyCache if options.dummy_cache else partial(cache.RedisCache, host=options.redis_host, port=options.redis_port),
             transfers=10,
             debug=False)
 

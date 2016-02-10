@@ -9,17 +9,26 @@ BUCKET = 'qabel'
 
 
 class S3Transfer(AbstractTransfer):
-    def __init__(self):
+    def __init__(self, cache):
+        super().__init__(cache)
         self.s3 = boto3.resource('s3')
 
     def store(self, storage_object: StorageObject):
         obj = self.s3.Object(BUCKET, file_key(storage_object))
-        size = self.get_size(obj)
+        try:
+            cached = self._from_cache(storage_object)
+        except KeyError:
+            size = self.get_size(obj)
+        else:
+            size = cached.size
+
         with open(storage_object.local_file, 'rb') as f_in:
             response = obj.put(Body=f_in)
             new_size = obj.content_length
             size_diff = new_size - size
-            return storage_object._replace(etag=response['ETag']), size_diff
+            new_object = storage_object._replace(etag=response['ETag'], size=new_size)
+            self._to_cache(new_object)
+            return new_object, size_diff
 
     def get_size(self, obj):
         try:
@@ -32,6 +41,13 @@ class S3Transfer(AbstractTransfer):
                 raise
 
     def retrieve(self, storage_object: StorageObject):
+        try:
+            cached = self._from_cache(storage_object)
+        except KeyError:
+            pass
+        else:
+            if cached.etag == storage_object.etag:
+                return storage_object._replace(local_file=None)
         obj = self.s3.Object(BUCKET, file_key(storage_object))
         try:
             if storage_object.etag:

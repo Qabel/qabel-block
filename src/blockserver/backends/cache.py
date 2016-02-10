@@ -10,7 +10,7 @@ class AbstractCache(ABC):
 
     def set(self, storage_object: StorageObject):
         """
-        Saves the etag of a StorageObject
+        Saves the etag and size of a StorageObject
         """
         key = file_key(storage_object)
         if storage_object.etag is None:
@@ -21,7 +21,7 @@ class AbstractCache(ABC):
 
     def get(self, storage_object: StorageObject) -> StorageObject:
         """
-        Gets the etag of a StorageObject according to the cache
+        Gets the etag and size of a StorageObject according to the cache
 
         Raises a KeyError if the etag is not known
         """

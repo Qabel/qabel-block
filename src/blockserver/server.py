@@ -10,7 +10,9 @@ from tornado.web import Application, RequestHandler, stream_request_body
 import tempfile
 from typing import Callable
 from blockserver.backends.util import StorageObject, AbstractTransfer
+from blockserver.backends import cache
 import json
+from functools import partial
 
 define('debug', help="Enable debug output for tornado", default=False)
 define('asyncio', help="Run on the asyncio loop instead of the tornado IOLoop", default=False)
@@ -26,6 +28,8 @@ define('dummy_log', help="Instead of calling the accounting server for logging, 
        default=False)
 define('dummy_cache', help="Use an in memory cache instead of redis",
        default=False)
+define('redis_host', help="Hostname of the redis server", default='localhost')
+define('redis_port', help="Port of the redis server", default=6379)
 logger = logging.getLogger(__name__)
 
 async def check_auth(auth, prefix, file_path, action):
@@ -73,16 +77,18 @@ class FileHandler(RequestHandler):
                    transfer_cls: Callable[[], Callable[[], AbstractTransfer]]=None,
                    auth_callback: Callable[[], Callable[[str, str, str, str], bool]]=None,
                    log_callback: Callable[[], Callable[[StorageObject, str, int], None]]=None,
+                   cache_cls: Callable[[], Callable[[], cache.AbstractCache]]=None,
                    concurrent_transfers: int=10):
         """
         :param transfer_cls: A function that returns a Transfer class
         :param auth_callback: A function that returns a callback used for authorization
         :param log_callback: A function that returns a callback used to log an action
+        :param cache_cls: A funciton that returns a Cache class
         :param concurrent_transfers: Size of the thread pool used for transfers
         :return:
         """
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(options.transfers)
-        self.transfer = transfer_cls()()
+        self.transfer = transfer_cls()(cache=cache_cls()())
         self.auth_callback = auth_callback()
         self.log_callback = log_callback()
 
@@ -172,6 +178,7 @@ def main():
     application = make_app(
         transfer_cls=lambda: DummyTransfer if options.dummy else S3Transfer,
         auth_callback=lambda: dummy_auth if options.dummy else check_auth,
+        cache_cls=lambda: cache.DummyCache if options.dummy_cache else partial(cache.RedisCache, host=options.redis_host, port=options.redis_port),
         log_callback=lambda: console_log, debug=options.debug,
         transfers=options.transfers,
     )
@@ -191,12 +198,13 @@ def main():
         IOLoop.current().start()
 
 
-def make_app(transfer_cls, auth_callback, log_callback, transfers, debug):
+def make_app(transfer_cls, auth_callback, log_callback, cache_cls, transfers, debug):
     application = Application([
         (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[\d\w-]+)', FileHandler, dict(
             transfer_cls=transfer_cls,
             auth_callback=auth_callback,
             log_callback=log_callback,
+            cache_cls=cache_cls,
             concurrent_transfers=transfers,
         ))
     ], debug=debug)
