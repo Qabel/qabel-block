@@ -61,9 +61,10 @@ class S3Transfer(AbstractTransfer):
         else:
             size = cached.size
 
+        new_size = os.path.getsize(storage_object.local_file)
+
         with open(storage_object.local_file, 'rb') as f_in:
             response = obj.put(Body=f_in)
-            new_size = obj.content_length
             size_diff = new_size - size
             new_object = storage_object._replace(etag=response['ETag'], size=new_size)
             self._to_cache(new_object)
