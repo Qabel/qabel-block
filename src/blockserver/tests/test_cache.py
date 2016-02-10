@@ -1,6 +1,6 @@
 import pytest
 
-from blockserver.backends.util import StorageObject
+from blockserver.backend.transfer import StorageObject
 
 with_etag = StorageObject('foo', 'bar', 'etag', size=10)
 without_etag = with_etag._replace(etag=None, size=None)  # type: StorageObject

@@ -3,8 +3,8 @@ import tempfile
 import os
 import random
 import string
-import blockserver.backends.cache as cache_backends
-from blockserver.backends import s3, dummy
+import blockserver.backend.cache as cache_backends
+from blockserver.backend import transfer as transfer_module
 
 from glinda.testing import services
 from tornado.options import options
@@ -35,13 +35,14 @@ def service_layer():
 
 @pytest.yield_fixture
 def auth_server(service_layer):
-    options.dummy_auth = False
+    prev_auth = options.dummy_auth
+    options.dummy_auth = None
     options.dummy_log = False
     dummy_acc = options.accountingserver
     auth = service_layer['auth']  # type: services.Service
     options.accountingserver = 'http://' + auth.host
     yield auth
-    options.dummy_auth = True
+    options.dummy_auth = prev_auth
     options.dummy_log = True
     options.accountingserver = dummy_acc
 
@@ -68,8 +69,7 @@ def backend(request):
     before = options.dummy
     options.dummy = switch_to
     if options.dummy:
-        from blockserver.backends import dummy
-        dummy.files = {}
+        transfer.files = {}
     yield
     options.dummy = before
 
@@ -88,11 +88,11 @@ def cache(request):
 def transfer(request, cache):
     transfer_backend = request.param
     if transfer_backend == 'dummy':
-        dummy.files = {}
-        yield dummy.DummyTransfer(cache)
-        dummy.files = {}
+        transfer_module.files = {}
+        yield transfer_module.DummyTransfer(cache)
+        transfer_module.files = {}
     if transfer_backend == 's3':
-        yield s3.S3Transfer(cache)
+        yield transfer_module.S3Transfer(cache)
 
 
 def pytest_addoption(parser):

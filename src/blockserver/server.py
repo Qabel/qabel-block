@@ -1,42 +1,43 @@
+import json
 import logging
+from typing import Callable
 
+import tempfile
 import tornado
 import tornado.httpserver
+from functools import partial
 from tornado import concurrent
 from tornado import gen
 from tornado.httpclient import AsyncHTTPClient
 from tornado.options import define, options
 from tornado.web import Application, RequestHandler, stream_request_body
-import tempfile
-from typing import Callable
-from blockserver.backends.util import StorageObject, AbstractTransfer
-from blockserver.backends import cache
-import json
-from functools import partial
+
+from blockserver.backend import cache
+from blockserver.backend.transfer import AbstractTransfer, StorageObject, S3Transfer, DummyTransfer
 
 define('debug', help="Enable debug output for tornado", default=False)
 define('asyncio', help="Run on the asyncio loop instead of the tornado IOLoop", default=False)
-define('dummy', help="Dummy storage backend instead of s3 backend", default=False)
 define('transfers', help="Thread pool size for transfers", default=10)
 define('port', default='8888')
 define('apisecret', help="API_SECRET of the accounting server", default='secret')
 define('noauth', help="Disable authentication", default=False)
-define('dummy_auth', help="Authenticate with the magicauth-token", default=False)
-define('magicauth', default="Token MAGICFARYDUST")
-define('accountingserver', help="Base url to the accounting server", default="http://localhost:8000")
+define('dummy_auth',
+       help="Authenticate with this authentication token [Example: MAGICFARYDUST] "
+            "for the prefix 'test'", default=None, type=str)
+define('accountingserver',
+       help="Base url to the accounting server", default="http://localhost:8000")
+define('dummy',
+       help="Use a local and temporary storage backend instead of s3 backend", default=False)
 define('dummy_log', help="Instead of calling the accounting server for logging, log to stdout",
        default=False)
 define('dummy_cache', help="Use an in memory cache instead of redis",
        default=False)
 define('redis_host', help="Hostname of the redis server", default='localhost')
 define('redis_port', help="Port of the redis server", default=6379)
+
 logger = logging.getLogger(__name__)
 
 async def check_auth(auth, prefix, file_path, action):
-    if options.noauth:
-        return True
-    if options.dummy_auth:
-        return await dummy_auth(auth, prefix, file_path, action)
     http_client = AsyncHTTPClient()
     url = options.accountingserver + '/api/v0/auth/' + prefix + '/' + file_path
     response = await http_client.fetch(
@@ -47,7 +48,7 @@ async def check_auth(auth, prefix, file_path, action):
 
 
 async def dummy_auth(auth, prefix, file_path, action):
-    return auth == options.magicauth and prefix == 'test'
+    return auth == 'Token ' + options.dummy_auth and prefix == 'test'
 
 
 async def console_log(auth, storage_object: StorageObject, action: str, size: int):
@@ -170,18 +171,8 @@ class FileHandler(RequestHandler):
 
 
 def main():
-    tornado.options.parse_command_line()
-    if options.dummy:
-        from blockserver.backends.dummy import DummyTransfer
-    else:
-        from blockserver.backends.s3 import S3Transfer
-    application = make_app(
-        transfer_cls=lambda: DummyTransfer if options.dummy else S3Transfer,
-        auth_callback=lambda: dummy_auth if options.dummy else check_auth,
-        cache_cls=lambda: cache.DummyCache if options.dummy_cache else partial(cache.RedisCache, host=options.redis_host, port=options.redis_port),
-        log_callback=lambda: console_log, debug=options.debug,
-        transfers=options.transfers,
-    )
+    application = make_app(debug=options.debug)
+
     if options.debug:
         application.listen(options.port)
     else:
@@ -198,14 +189,31 @@ def main():
         IOLoop.current().start()
 
 
-def make_app(transfer_cls, auth_callback, log_callback, cache_cls, transfers, debug):
+def make_app(log_callback=None, debug=False):
+    def get_auth_func():
+        if options.noauth:
+            return lambda: True
+        if options.dummy_auth:
+            return dummy_auth
+        else:
+            return check_auth
+
+    def get_cache_func():
+        if options.dummy_cache:
+            return cache.DummyCache
+        else:
+            return partial(cache.RedisCache, host=options.redis_host, port=options.redis_port)
+
+    if log_callback is None:
+        log_callback = lambda: console_log if options.dummy_log else send_log,
+
     application = Application([
         (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[\d\w-]+)', FileHandler, dict(
-            transfer_cls=transfer_cls,
-            auth_callback=auth_callback,
+            transfer_cls=lambda: DummyTransfer if options.dummy else S3Transfer,
+            auth_callback=get_auth_func,
             log_callback=log_callback,
-            cache_cls=cache_cls,
-            concurrent_transfers=transfers,
+            cache_cls=get_cache_func,
+            concurrent_transfers=options.transfers,
         ))
     ], debug=debug)
     return application

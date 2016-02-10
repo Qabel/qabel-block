@@ -1,20 +1,13 @@
 import pytest
-from blockserver import server
+import json
 from tornado.options import options
 from glinda.testing import services
-from functools import partial
 
-from blockserver.backends import dummy
-from blockserver.backends import s3
-from blockserver.backends import cache
+from blockserver import server
 
-import json
 
 API_QUOTA = '/api/v0/quota'
 
-options.debug = True
-options.dummy_auth = True
-options.dummy_log = True
 
 @pytest.fixture
 def mock_log():
@@ -24,15 +17,17 @@ def mock_log():
     return log
 
 
-@pytest.fixture
+@pytest.yield_fixture
 def app(mock_log):
-    return server.make_app(
-            transfer_cls=lambda: dummy.DummyTransfer if options.dummy else s3.S3Transfer,
-            auth_callback=lambda: server.dummy_auth if options.dummy_auth else server.check_auth,
+    prev_auth = options.dummy_auth
+    prev_log = options.dummy_log
+    options.dummy_auth = 'MAGICFARYDUST'
+    options.dummy_log = True
+    yield server.make_app(
             log_callback=lambda: mock_log if options.dummy_log else server.send_log,
-            cache_cls=lambda: cache.DummyCache if options.dummy_cache else partial(cache.RedisCache, host=options.redis_host, port=options.redis_port),
-            transfers=10,
             debug=False)
+    options.dummy_auth = prev_auth
+    options.dummy_log = prev_log
 
 
 @pytest.mark.gen_test

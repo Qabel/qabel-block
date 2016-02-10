@@ -3,7 +3,7 @@ from typing import Tuple
 from abc import abstractmethod, ABC
 
 import redis
-from blockserver.backends.util import StorageObject, file_key
+from blockserver.backend.transfer import StorageObject, file_key
 
 
 class AbstractCache(ABC):

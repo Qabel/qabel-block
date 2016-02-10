@@ -1,7 +1,5 @@
-import pytest
-
-from blockserver.backends.util import StorageObject
-from blockserver.backends import dummy
+from blockserver.backend.transfer import StorageObject
+from blockserver.backend import transfer as transfer_module
 import os
 
 
@@ -30,6 +28,6 @@ def test_cache_for_etag(testfile, cache, transfer):
     uploaded, _ = transfer.store(storage_object)
     # the request should work without connection to the backend
     # this is simulated by disabling the reference to the internal backend
-    dummy.files = {}
+    transfer_module.files = {}
     transfer.s3 = None
     assert transfer.retrieve(uploaded)
