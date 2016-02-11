@@ -214,7 +214,7 @@ def make_app(log_callback=None, debug=False):
         return DummyTransfer if options.dummy else S3Transfer
 
     application = Application([
-        (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[\d\w-]+)', FileHandler, dict(
+        (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[/\d\w-]+)', FileHandler, dict(
             transfer_cls=get_transfer_cls,
             auth_callback=get_auth_func,
             log_callback=log_callback,

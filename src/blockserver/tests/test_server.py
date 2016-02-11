@@ -213,3 +213,8 @@ def test_log_handles_overwrites(app, http_client, path, headers, mock_log):
     sizes = [entry[3] for entry in mock_log.log]
     assert sizes == [size, size, -size]
 
+
+@pytest.mark.gen_test
+def test_no_long_path(backend, http_client, path, headers):
+    response = yield http_client.fetch(path+'/blocks/foobar', method='POST', body=b'', headers=headers)
+    assert response.code == 204
