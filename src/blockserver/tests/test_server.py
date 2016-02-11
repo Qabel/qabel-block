@@ -25,7 +25,7 @@ def app(mock_log):
     options.dummy_log = True
     yield server.make_app(
             log_callback=lambda: mock_log if options.dummy_log else server.send_log,
-            debug=False)
+            debug=True)
     options.dummy_auth = prev_auth
     options.dummy_log = prev_log
 

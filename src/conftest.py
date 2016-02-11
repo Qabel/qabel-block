@@ -44,7 +44,7 @@ def auth_server(service_layer):
     yield auth
     options.dummy_auth = prev_auth
     options.dummy_log = True
-    options.accounting_hos = dummy_acc
+    options.accounting_host = dummy_acc
 
 
 @pytest.fixture

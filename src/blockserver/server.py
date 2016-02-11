@@ -205,11 +205,17 @@ def make_app(log_callback=None, debug=False):
             return partial(cache.RedisCache, host=options.redis_host, port=options.redis_port)
 
     if log_callback is None:
-        log_callback = lambda: console_log if options.dummy_log else send_log
+        def log_callback():
+            return console_log if options.dummy_log else send_log
+
+    def get_transfer_cls():
+        if options and not debug:
+            raise RuntimeError("Dummy backend is only allowed in debug mode")
+        return DummyTransfer if options.dummy else S3Transfer
 
     application = Application([
         (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[\d\w-]+)', FileHandler, dict(
-            transfer_cls=lambda: DummyTransfer if options.dummy else S3Transfer,
+            transfer_cls=get_transfer_cls,
             auth_callback=get_auth_func,
             log_callback=log_callback,
             cache_cls=get_cache_func,
