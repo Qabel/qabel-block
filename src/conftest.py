@@ -38,13 +38,13 @@ def auth_server(service_layer):
     prev_auth = options.dummy_auth
     options.dummy_auth = None
     options.dummy_log = False
-    dummy_acc = options.accountingserver
+    dummy_acc = options.accounting_host
     auth = service_layer['auth']  # type: services.Service
-    options.accountingserver = 'http://' + auth.host
+    options.accounting_host = 'http://' + auth.host
     yield auth
     options.dummy_auth = prev_auth
     options.dummy_log = True
-    options.accountingserver = dummy_acc
+    options.accounting_hos = dummy_acc
 
 
 @pytest.fixture
