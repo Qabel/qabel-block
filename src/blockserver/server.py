@@ -194,6 +194,9 @@ def main():
 
 
 def make_app(log_callback=None, debug=False):
+    if options.dummy and not debug:
+        raise RuntimeError("Dummy backend is only allowed in debug mode")
+
     def get_auth_func():
         if options.noauth:
             return lambda: True
@@ -213,8 +216,6 @@ def make_app(log_callback=None, debug=False):
             return console_log if options.dummy_log else send_log
 
     def get_transfer_cls():
-        if options and not debug:
-            raise RuntimeError("Dummy backend is only allowed in debug mode")
         return DummyTransfer if options.dummy else S3Transfer
 
     application = Application([
