@@ -70,7 +70,7 @@ async def send_log(auth, storage_object: StorageObject, action: str, size: int):
                                      'Content-Type': 'application/json'},
                             body=json.dumps(payload), raise_error=False)
     if response.code >= 300:
-        logger.error('Could not send log: {}'.format(response.headers))
+        logger.error('Could not send log: {}'.format(response.body))
 
 
 @stream_request_body
