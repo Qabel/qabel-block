@@ -64,11 +64,13 @@ async def send_log(auth, storage_object: StorageObject, action: str, size: int):
     url = options.accounting_host + '/api/v0/quota/'
     payload = {'prefix': storage_object.prefix, 'file_path': storage_object.file_path,
                'action': action, 'size': size}
-    await http_client.fetch(url, method='POST',
+    response = await http_client.fetch(url, method='POST',
                             headers={'Authorization': auth,
                                      'APISECRET': options.apisecret,
                                      'Content-Type': 'application/json'},
-                            body=json.dumps(payload))
+                            body=json.dumps(payload), raise_error=False)
+    if response.code >= 300:
+        logger.error('Could not send log: {}'.format(response.headers))
 
 
 @stream_request_body
