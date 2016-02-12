@@ -6,7 +6,7 @@ from glinda.testing import services
 from blockserver import server
 
 
-API_QUOTA = '/api/v0/quota'
+API_QUOTA = '/api/v0/quota/'
 
 
 @pytest.fixture

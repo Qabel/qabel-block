@@ -61,12 +61,14 @@ async def console_log(auth, storage_object: StorageObject, action: str, size: in
 
 async def send_log(auth, storage_object: StorageObject, action: str, size: int):
     http_client = AsyncHTTPClient()
-    url = options.accounting_host + '/api/v0/quota'
+    url = options.accounting_host + '/api/v0/quota/'
     payload = {'prefix': storage_object.prefix, 'file_path': storage_object.file_path,
                'action': action, 'size': size}
-    await http_client.fetch(
-            url, method='POST', headers={'Authorization': auth, 'APISECRET': options.apisecret},
-            body=json.dumps(payload), raise_error=False)
+    await http_client.fetch(url, method='POST',
+                            headers={'Authorization': auth,
+                                     'APISECRET': options.apisecret,
+                                     'Content-Type': 'application/json'},
+                            body=json.dumps(payload))
 
 
 @stream_request_body
