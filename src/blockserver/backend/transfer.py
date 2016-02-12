@@ -4,7 +4,9 @@ import boto3
 import tempfile
 import random
 import os
+import shutil
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 from botocore.exceptions import ClientError
 
@@ -118,6 +120,11 @@ files = {}
 
 
 class DummyTransfer(AbstractTransfer):
+
+    def __init__(self, cache):
+        super().__init__(cache)
+        self._tempdir = tempfile.mkdtemp()
+
     def store(self, storage_object: StorageObject) -> Tuple[StorageObject, int]:
         old_size = 0
         try:
@@ -131,8 +138,15 @@ class DummyTransfer(AbstractTransfer):
         else:
             old_size = cached.size
         new_size = os.path.getsize(storage_object.local_file)
+        new_path = os.path.join(self._tempdir, file_key(storage_object))
+        dirname = os.path.dirname(new_path)
+        os.makedirs(dirname, exist_ok=True)
+        if new_size != 0:
+            shutil.copyfile(storage_object.local_file, new_path)
+        else:
+            Path(new_path).touch()
         new_object = storage_object._replace(
-                etag=str(random.randint(1, 20000)), size=new_size)
+                etag=str(random.randint(1, 20000)), size=new_size, local_file=new_path)
         self._to_cache(new_object)
         files[file_key(storage_object)] = new_object
         return new_object, new_size - old_size

@@ -114,7 +114,7 @@ class FileHandler(RequestHandler):
         else:
             self.auth = True
         if self.request.method == 'POST':
-            self.temp = tempfile.NamedTemporaryFile(delete=False)
+            self.temp = tempfile.NamedTemporaryFile()
 
     async def data_received(self, chunk):
         if not self.auth:
@@ -142,9 +142,10 @@ class FileHandler(RequestHandler):
 
     @gen.coroutine
     def post(self, prefix, file_path):
-        self.temp.close()
+        self.temp.seek(0)
         storage_object, size_diff = yield self.store_file(
                 prefix, file_path, self.temp.name)
+        self.temp.close()
         yield self.log_callback(self.auth_header,
                                 StorageObject(prefix, file_path, None, None),
                                 'store', size_diff)
@@ -199,7 +200,9 @@ def make_app(log_callback=None, debug=False):
 
     def get_auth_func():
         if options.noauth:
-            return lambda: True
+            async def noauth(*args):
+                return True
+            return noauth
         if options.dummy_auth:
             return dummy_auth
         else:
