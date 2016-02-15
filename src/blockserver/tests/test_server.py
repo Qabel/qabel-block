@@ -54,6 +54,7 @@ def test_normal_cycle(backend, http_client, path, headers):
     assert response.code == 204
     response = yield http_client.fetch(path, method='GET', headers=headers)
     assert response.body == b'Dummy'
+    assert int(response.headers['Content-Length']) == len(b'Dummy')
     response = yield http_client.fetch(path, method='DELETE', headers=headers)
     assert response.code == 204
     response = yield http_client.fetch(path, method='GET', headers=headers, raise_error=False)

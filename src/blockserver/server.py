@@ -133,6 +133,7 @@ class FileHandler(RequestHandler):
         if storage_object.local_file is None:
             self.set_status(304)
         else:
+            self.set_header('Content-Length', storage_object.size)
             with open(storage_object.local_file, 'rb') as f_in:
                 for chunk in iter(lambda: f_in.read(8192), b''):
                     self.write(chunk)

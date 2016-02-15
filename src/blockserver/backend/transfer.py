@@ -102,12 +102,12 @@ class S3Transfer(AbstractTransfer):
                 return storage_object._replace(local_file=None)
             else:
                 return None
-
+        size = response['ContentLength']
         with tempfile.NamedTemporaryFile('wb', delete=False) as temp:
             streaming_body = response['Body']
             for chunk in iter(lambda: streaming_body.read(8192), b''):
                 temp.write(chunk)
-            return storage_object._replace(local_file=temp.name, etag=response['ETag'])
+            return storage_object._replace(local_file=temp.name, etag=response['ETag'], size=size)
 
     def delete(self, storage_object):
         obj = self.s3.Object(BUCKET, file_key(storage_object))
