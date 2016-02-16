@@ -1,6 +1,9 @@
 import json
 import logging
+from time import perf_counter
 from typing import Callable
+from prometheus_client import start_http_server
+
 
 import tempfile
 import tornado
@@ -14,6 +17,7 @@ from tornado.web import Application, RequestHandler, stream_request_body
 
 from blockserver.backend import cache
 from blockserver.backend.transfer import AbstractTransfer, StorageObject, S3Transfer, DummyTransfer
+from blockserver import monitoring as mon
 
 define('debug', help="Enable debug output for tornado", default=False)
 define('asyncio', help="Run on the asyncio loop instead of the tornado IOLoop", default=False)
@@ -34,9 +38,13 @@ define('dummy_cache', help="Use an in memory cache instead of redis",
        default=False)
 define('redis_host', help="Hostname of the redis server", default='localhost')
 define('redis_port', help="Port of the redis server", default=6379)
+define('prometheus_port', help="Port to start the prometheus metrics server on",
+       default=None, type=int)
 
 logger = logging.getLogger(__name__)
 
+
+@mon.time(mon.WAIT_FOR_AUTH)
 async def check_auth(auth, prefix, file_path, action):
     http_client = AsyncHTTPClient()
     url = options.accounting_host + '/api/v0/auth/' + prefix + '/' + file_path
@@ -59,6 +67,8 @@ async def console_log(auth, storage_object: StorageObject, action: str, size: in
         size=size
     ))
 
+
+@mon.time(mon.WAIT_FOR_QUOTA)
 async def send_log(auth, storage_object: StorageObject, action: str, size: int):
     http_client = AsyncHTTPClient()
     url = options.accounting_host + '/api/v0/quota/'
@@ -70,6 +80,7 @@ async def send_log(auth, storage_object: StorageObject, action: str, size: int):
                                      'Content-Type': 'application/json'},
                             body=json.dumps(payload), raise_error=False)
     if response.code >= 300:
+        mon.COUNT_QUOTA_ERROR.inc()
         logger.error('Could not send log: {}'.format(response.body))
 
 
@@ -98,6 +109,8 @@ class FileHandler(RequestHandler):
         self.log_callback = log_callback()
 
     async def prepare(self):
+        self._start_time = perf_counter()
+        mon.REQ_IN_PROGRESS.inc()
         self.auth = None
         self.streamer = None
         try:
@@ -107,9 +120,12 @@ class FileHandler(RequestHandler):
             self.send_error(403)
             return
         self.auth_header = self.request.headers.get('Authorization', None)
-        if not await self.auth_callback(self.auth_header, prefix, file_path, self.request.method):
+        authorized = await self.auth_callback(
+                self.auth_header, prefix, file_path, self.request.method)
+        if not authorized:
             self.auth = False
             self.send_error(403, reason="Not authorized for this prefix")
+            mon.COUNT_ACCESS_DENIED.inc()
             return
         else:
             self.auth = True
@@ -138,6 +154,7 @@ class FileHandler(RequestHandler):
                 for chunk in iter(lambda: f_in.read(8192), b''):
                     self.write(chunk)
                 size = f_in.tell()
+            mon.TRAFFIC_RESPONSE.inc(size)
             yield self.log_callback(self.auth_header, storage_object, 'get', size)
         self.finish()
 
@@ -147,6 +164,7 @@ class FileHandler(RequestHandler):
         storage_object, size_diff = yield self.store_file(
                 prefix, file_path, self.temp.name)
         self.temp.close()
+        mon.TRAFFIC_REQUEST.inc(storage_object.size)
         yield self.log_callback(self.auth_header,
                                 StorageObject(prefix, file_path, None, None),
                                 'store', size_diff)
@@ -175,16 +193,24 @@ class FileHandler(RequestHandler):
     def retrieve_file(self, prefix, file_path, etag):
         return self.transfer.retrieve(StorageObject(prefix, file_path, etag, None))
 
+    def finish(self, chunk=None):
+        super().finish(chunk)
+        mon.REQ_IN_PROGRESS.dec()
+        mon.REQ_RESPONSE.observe(perf_counter() - self._start_time)
+
 
 def main():
     application = make_app(debug=options.debug)
+
+    if options.prometheus_port:
+        start_http_server(options.prometheus_port)
 
     if options.debug:
         application.listen(options.port)
     else:
         server = tornado.httpserver.HTTPServer(application)
         server.bind(options.port)
-        server.start(0)
+        server.start()
     if options.asyncio:
         logger.info('Using asyncio')
         from tornado.platform.asyncio import AsyncIOMainLoop

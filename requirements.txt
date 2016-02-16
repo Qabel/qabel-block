@@ -5,3 +5,5 @@ pytest==2.8.7
 tornado==4.3
 redis==2.10.5
 pytest-tornado==0.4.4
+prometheus_client==0.0.13
+wrapt==1.10.6

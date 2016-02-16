@@ -10,6 +10,8 @@ from pathlib import Path
 
 from botocore.exceptions import ClientError
 
+from blockserver import monitoring as mon
+
 StorageObject = NamedTuple('StorageObject',
                            [('prefix', str), ('file_path', str),
                             ('etag', str), ('local_file', str),
@@ -54,19 +56,22 @@ class S3Transfer(AbstractTransfer):
         super().__init__(cache)
         self.s3 = boto3.resource('s3')
 
+    @mon.TIME_IN_TRANSFER_STORE.time()
     def store(self, storage_object: StorageObject):
         obj = self.s3.Object(BUCKET, file_key(storage_object))
         try:
             cached = self._from_cache(storage_object)
         except KeyError:
-            size = self.get_size(obj)
+            with mon.SUMMARY_S3_REQUESTS.time():
+                size = self.get_size(obj)
         else:
             size = cached.size
 
         new_size = os.path.getsize(storage_object.local_file)
 
         with open(storage_object.local_file, 'rb') as f_in:
-            response = obj.put(Body=f_in)
+            with mon.SUMMARY_S3_REQUESTS.time():
+                response = obj.put(Body=f_in)
             size_diff = new_size - size
             new_object = storage_object._replace(etag=response['ETag'], size=new_size)
             self._to_cache(new_object)
@@ -82,6 +87,7 @@ class S3Transfer(AbstractTransfer):
             else:
                 raise
 
+    @mon.TIME_IN_TRANSFER_RETRIEVE.time()
     def retrieve(self, storage_object: StorageObject):
         try:
             cached = self._from_cache(storage_object)
@@ -91,28 +97,32 @@ class S3Transfer(AbstractTransfer):
             if cached.etag == storage_object.etag:
                 return storage_object._replace(local_file=None)
         obj = self.s3.Object(BUCKET, file_key(storage_object))
-        try:
-            if storage_object.etag:
-                response = obj.get(IfNoneMatch=storage_object.etag)
-            else:
-                response = obj.get()
-        except ClientError as e:
-            status = e.response['ResponseMetadata']['HTTPStatusCode']
-            if status == 304:
-                return storage_object._replace(local_file=None)
-            else:
-                return None
-        size = response['ContentLength']
-        with tempfile.NamedTemporaryFile('wb', delete=False) as temp:
-            streaming_body = response['Body']
-            for chunk in iter(lambda: streaming_body.read(8192), b''):
-                temp.write(chunk)
-            return storage_object._replace(local_file=temp.name, etag=response['ETag'], size=size)
+        with mon.SUMMARY_S3_REQUESTS.time():
+            try:
+                if storage_object.etag:
+                    response = obj.get(IfNoneMatch=storage_object.etag)
+                else:
+                    response = obj.get()
+            except ClientError as e:
+                status = e.response['ResponseMetadata']['HTTPStatusCode']
+                if status == 304:
+                    return storage_object._replace(local_file=None)
+                else:
+                    return None
+            size = response['ContentLength']
+            with tempfile.NamedTemporaryFile('wb', delete=False) as temp:
+                streaming_body = response['Body']
+                for chunk in iter(lambda: streaming_body.read(8192), b''):
+                    temp.write(chunk)
+                return storage_object._replace(local_file=temp.name, etag=response['ETag'], size=size)
 
+    @mon.TIME_IN_TRANSFER_DELETE.time()
     def delete(self, storage_object):
         obj = self.s3.Object(BUCKET, file_key(storage_object))
-        size = self.get_size(obj)
-        obj.delete()
+        with mon.SUMMARY_S3_REQUESTS.time():
+            size = self.get_size(obj)
+        with mon.SUMMARY_S3_REQUESTS.time():
+            obj.delete()
         return size
 
 
