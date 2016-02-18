@@ -179,6 +179,9 @@ class DummyTransfer(AbstractTransfer):
             return object
 
     def delete(self, storage_object: StorageObject):
-        return os.path.getsize(files.pop(file_key(storage_object)).local_file)
+        try:
+            return os.path.getsize(files.pop(file_key(storage_object)).local_file)
+        except KeyError:
+            return 0
 
 

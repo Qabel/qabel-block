@@ -16,6 +16,12 @@ def test_basic(testfile, cache, transfer):
     assert size == delete_size
 
 
+def test_delete_non_existing_file(testfile, cache, transfer):
+    t = transfer
+    storage_object = StorageObject('foo', 'bar')
+    assert t.delete(storage_object) == 0
+
+
 def test_cache_is_filled(testfile, cache, transfer):
     storage_object = StorageObject('foo', 'bar', local_file=testfile)
     uploaded, size_diff = transfer.store(storage_object)
