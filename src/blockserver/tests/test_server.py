@@ -18,12 +18,13 @@ def mock_log():
 
 
 @pytest.yield_fixture
-def app(mock_log):
+def app(mock_log, cache):
     prev_auth = options.dummy_auth
     prev_log = options.dummy_log
     options.dummy_auth = 'MAGICFARYDUST'
     options.dummy_log = True
     yield server.make_app(
+            cache_cls=lambda: (lambda: cache),
             log_callback=lambda: mock_log if options.dummy_log else server.send_log,
             debug=True)
     options.dummy_auth = prev_auth
@@ -43,7 +44,8 @@ def test_no_body(backend, http_client, path, headers):
 
 
 @pytest.mark.gen_test
-def test_no_auth(http_client, path):
+def test_no_auth(http_client, path, cache):
+    cache.flush()
     response = yield http_client.fetch(path, method='GET', raise_error=False)
     assert response.code == 403
 
@@ -55,6 +57,9 @@ def test_normal_cycle(backend, http_client, path, headers):
     response = yield http_client.fetch(path, method='GET', headers=headers)
     assert response.body == b'Dummy'
     assert int(response.headers['Content-Length']) == len(b'Dummy')
+    response = yield http_client.fetch(path, method='DELETE', headers=headers)
+    assert response.code == 204
+    # deleting again works fine
     response = yield http_client.fetch(path, method='DELETE', headers=headers)
     assert response.code == 204
     response = yield http_client.fetch(path, method='GET', headers=headers, raise_error=False)
@@ -105,7 +110,7 @@ def test_etag_modified(backend, http_client, path, headers):
 
 
 @pytest.mark.gen_test
-def test_auth_backend_called(app, http_client, path, auth_path, headers, auth_server, file_path):
+def test_auth_backend_called(app, cache, http_client, path, auth_path, headers, auth_server, file_path):
     body = b'Dummy'
     _, prefix, file_name = file_path.split('/')
     size = len(body)
@@ -143,7 +148,7 @@ def test_auth_backend_called_for_get(app, http_client, path, auth_path, headers,
 
 @pytest.mark.gen_test
 def test_auth_backend_called_for_post_and_denied(
-        app, http_client, path, auth_path, headers, auth_server):
+        app, cache, http_client, path, auth_path, headers, auth_server):
     auth_server.add_response(services.Request('POST', auth_path), services.Response(403))
     response = yield http_client.fetch(path, method='POST', headers=headers, body=b'Dummy',
                                        raise_error=False)

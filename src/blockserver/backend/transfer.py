@@ -33,10 +33,10 @@ class AbstractTransfer(ABC):
         self.cache = cache
 
     def _from_cache(self, storage_object: StorageObject) -> Union[StorageObject, None]:
-        return self.cache.get(storage_object)
+        return self.cache.get_storage(storage_object)
 
     def _to_cache(self, storage_object: StorageObject) -> Union[StorageObject, None]:
-        self.cache.set(storage_object)
+        self.cache.set_storage(storage_object)
 
     @abstractmethod
     def store(self, storage_object: StorageObject) -> Tuple[StorageObject, int]:

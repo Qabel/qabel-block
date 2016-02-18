@@ -30,6 +30,9 @@ COUNT_ACCESS_DENIED = Counter('block_access_denied', 'Number of requests that re
 
 COUNT_QUOTA_ERROR = Counter('block_quota_error', 'Number of quota requests that failed')
 
+COUNT_AUTH_CACHE_HITS = Counter('block_auth_cache_hits', 'Number of cache hits for auth requests')
+COUNT_AUTH_CACHE_SETS = Counter('block_auth_cache_sets', 'Number of cache sets for auth requests')
+
 TRAFFIC_RESPONSE = Counter('block_traffic_response', 'Download traffic')
 TRAFFIC_REQUEST = Counter('block_traffic_request', 'Upload traffic')
 

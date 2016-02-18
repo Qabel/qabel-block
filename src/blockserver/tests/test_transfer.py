@@ -25,7 +25,7 @@ def test_delete_non_existing_file(testfile, cache, transfer):
 def test_cache_is_filled(testfile, cache, transfer):
     storage_object = StorageObject('foo', 'bar', local_file=testfile)
     uploaded, size_diff = transfer.store(storage_object)
-    assert cache.get(storage_object) == storage_object._replace(
+    assert cache.get_storage(storage_object) == storage_object._replace(
         etag=uploaded.etag, size=uploaded.size)
 
 

@@ -104,7 +104,8 @@ class FileHandler(RequestHandler):
         :return:
         """
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(options.transfers)
-        self.transfer = transfer_cls()(cache=cache_cls()())
+        self.cache = cache_cls()()  # type: cache.AbstractCache
+        self.transfer = transfer_cls()(cache=self.cache)
         self.auth_callback = auth_callback()
         self.log_callback = log_callback()
 
@@ -113,24 +114,41 @@ class FileHandler(RequestHandler):
         mon.REQ_IN_PROGRESS.inc()
         self.auth = None
         self.streamer = None
+        self.auth = await self._authorize_request()
+        if not self.auth:
+            mon.COUNT_ACCESS_DENIED.inc()
+            return
+        if self.request.method == 'POST':
+            self.temp = tempfile.NamedTemporaryFile()
+
+    async def _authorize_request(self):
         try:
             prefix = self.path_kwargs['prefix']
             file_path = self.path_kwargs['file_path']
         except KeyError:
-            self.send_error(403)
-            return
+            self.send_error(403, reason="No correct prefix given")
+            return False
+
         self.auth_header = self.request.headers.get('Authorization', None)
-        authorized = await self.auth_callback(
+        if self.auth_header is None:
+            self.send_error(403, reason="No authorization given")
+            return False
+
+        try:
+            authorized = self.cache.get_auth(
+                self.auth_header, prefix, self.request.method)
+        except KeyError:
+            authorized = await self.auth_callback(
                 self.auth_header, prefix, file_path, self.request.method)
-        if not authorized:
-            self.auth = False
-            self.send_error(403, reason="Not authorized for this prefix")
-            mon.COUNT_ACCESS_DENIED.inc()
-            return
+            self.cache.set_auth(
+                self.auth_header, prefix, self.request.method, authorized)
+            mon.COUNT_AUTH_CACHE_SETS.inc()
         else:
-            self.auth = True
-        if self.request.method == 'POST':
-            self.temp = tempfile.NamedTemporaryFile()
+            mon.COUNT_AUTH_CACHE_HITS.inc()
+
+        if not authorized:
+            self.send_error(403, reason="Not authorized for this prefix")
+        return authorized
 
     async def data_received(self, chunk):
         if not self.auth:
@@ -221,7 +239,7 @@ def main():
         IOLoop.current().start()
 
 
-def make_app(log_callback=None, debug=False):
+def make_app(cache_cls=None, log_callback=None, debug=False):
     if options.dummy and not debug:
         raise RuntimeError("Dummy backend is only allowed in debug mode")
 
@@ -235,11 +253,12 @@ def make_app(log_callback=None, debug=False):
         else:
             return check_auth
 
-    def get_cache_func():
-        if options.dummy_cache:
-            return cache.DummyCache
-        else:
-            return partial(cache.RedisCache, host=options.redis_host, port=options.redis_port)
+    if cache_cls is None:
+        def cache_cls():
+            if options.dummy_cache:
+                return cache.DummyCache
+            else:
+                return partial(cache.RedisCache, host=options.redis_host, port=options.redis_port)
 
     if log_callback is None:
         def log_callback():
@@ -253,7 +272,7 @@ def make_app(log_callback=None, debug=False):
             transfer_cls=get_transfer_cls,
             auth_callback=get_auth_func,
             log_callback=log_callback,
-            cache_cls=get_cache_func,
+            cache_cls=cache_cls,
             concurrent_transfers=options.transfers,
         ))
     ], debug=debug)

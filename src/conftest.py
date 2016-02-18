@@ -64,7 +64,7 @@ def path(base_url, file_path):
 
 
 @pytest.yield_fixture
-def backend(request):
+def backend(request, cache):
     switch_to = (request.param == 'dummy')
     before = options.dummy
     options.dummy = switch_to
@@ -78,11 +78,13 @@ def backend(request):
 def cache(request):
     cache_backend = request.param
     if cache_backend == 'dummy':
-        return cache_backends.DummyCache()
-    if cache_backend == 'redis':
-        redis = cache_backends.RedisCache(host='localhost', port='6379')
-        redis.flush()
-        return redis
+        cache_object = cache_backends.DummyCache()
+    elif cache_backend == 'redis':
+        cache_object = cache_backends.RedisCache(host='localhost', port='6379')
+    else:
+        raise ValueError('Unknown backend')
+    cache_object.flush()
+    return cache_object
 
 @pytest.yield_fixture()
 def transfer(request, cache):

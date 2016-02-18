@@ -1,44 +1,76 @@
-from typing import Tuple
+from typing import Dict, List
 
 from abc import abstractmethod, ABC
 
 import redis
 from blockserver.backend.transfer import StorageObject, file_key
 
+AUTH_CACHE_EXPIRE = 60
+
 
 class AbstractCache(ABC):
 
-    def set(self, storage_object: StorageObject):
+    STORAGE_PREFIX = 'storage_'
+    AUTH_PREFIX = 'auth_'
+
+    def set_storage(self, storage_object: StorageObject):
         """
         Saves the etag and size of a StorageObject
         """
-        key = file_key(storage_object)
+        key = self._storage_key(storage_object)
         if storage_object.etag is None:
             raise ValueError('No etag set in StorageObject')
         if storage_object.size is None:
             raise ValueError('No size set in StorageObject')
-        self._set(key, storage_object.etag.encode(), storage_object.size)
+        self._set(key, etag=storage_object.etag.encode(), size=storage_object.size)
 
-    def get(self, storage_object: StorageObject) -> StorageObject:
+    def get_storage(self, storage_object: StorageObject) -> StorageObject:
         """
         Gets the etag and size of a StorageObject according to the cache
 
         Raises a KeyError if the etag is not known
         """
-        key = file_key(storage_object)
-        etag, size = self._get(key)
+        key = self._storage_key(storage_object)
+        etag, size = self._get(key, 'etag', 'size')
         if etag is None or size is None:
             raise KeyError("Element not found")
         etag = etag.decode('UTF-8')
         size = int(size)
         return storage_object._replace(etag=etag, size=size)
 
+    def set_auth(self, authentication_token: str, prefix: str, method: str, value: bool):
+        if not isinstance(value, bool):
+            raise ValueError('Need a boolean value')
+        key = self._auth_key(authentication_token, prefix, method)
+        self._set_single(key, b'1' if value else b'0', AUTH_CACHE_EXPIRE)
+
+    def get_auth(self, authentication_token: str, prefix: str, method: str):
+        key = self._auth_key(authentication_token, prefix, method)
+        allow = self._get_single(key)
+        if allow is None:
+            raise KeyError('Element not found')
+        return allow == b'1'
+
+    def _storage_key(self, storage_object):
+        return self.STORAGE_PREFIX + file_key(storage_object)
+
+    def _auth_key(self, authentication_token, prefix, method):
+        return self.AUTH_PREFIX + '_'.join((authentication_token, prefix, method))
+
     @abstractmethod
-    def _set(self, key: str, etag: bytes, size: int):
+    def _set(self, key: str, **values: Dict[str, str]):
         pass
 
     @abstractmethod
-    def _get(self, key: str) -> Tuple[bytes, int]:
+    def _get(self, key: str, *keys: List[str]) -> Dict[str, str]:
+        pass
+
+    @abstractmethod
+    def _set_single(self, key, param, time_to_live):
+        pass
+
+    @abstractmethod
+    def _get_single(self, key):
         pass
 
 
@@ -46,15 +78,30 @@ class DummyCache(AbstractCache):
     """
     Local cache implemented with dict
     """
-
     def __init__(self):
         self._cache = {}
 
-    def _set(self, key, etag, size):
-        self._cache[key] = etag, size
+    def _set(self, key, **values):
+        converted_values = {k: v.encode('UTF-8') if isinstance(v, str) else v
+                            for k, v in values.items()}
+        self._cache[key] = converted_values
 
-    def _get(self, key):
-        return self._cache.get(key, (None, None))
+    def _get(self, key, *keys):
+        try:
+            values = self._cache[key]
+        except KeyError:
+            return [None] * len(keys)
+        else:
+            return [values[k] for k in keys]
+
+    def _set_single(self, key, param, time_to_live):
+        self._cache[key] = param
+
+    def _get_single(self, key):
+        return self._cache[key]
+
+    def flush(self):
+        self._cache = {}
 
 
 class RedisCache(AbstractCache):
@@ -62,15 +109,21 @@ class RedisCache(AbstractCache):
     Cache ETags from StorageObjects in redis
     """
 
+    def _set_single(self, key, param, time_to_live):
+        self._cache.setex(key, time_to_live, param)
+
+    def _get_single(self, key):
+        return self._cache.get(key)
+
     def __init__(self, host, port):
         self._cache = redis.StrictRedis(host=host, port=port)
 
     def flush(self):
         self._cache.flushdb()
 
-    def _set(self, key, etag, size):
-        return self._cache.hmset(key, {'etag': etag, 'size': size})
+    def _set(self, key, **values):
+        return self._cache.hmset(key, values)
 
-    def _get(self, key):
-        return self._cache.hmget(key, ('etag', 'size'))
+    def _get(self, key, *keys):
+        return self._cache.hmget(key, keys)
 
