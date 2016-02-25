@@ -1,9 +1,9 @@
 import json
 import logging
+import logging.config
 from time import perf_counter
 from typing import Callable
 from prometheus_client import start_http_server
-
 
 import tempfile
 import tornado
@@ -40,6 +40,10 @@ define('redis_host', help="Hostname of the redis server", default='localhost')
 define('redis_port', help="Port of the redis server", default=6379)
 define('prometheus_port', help="Port to start the prometheus metrics server on",
        default=None, type=int)
+define('logging_config',
+       help="Config file for logging, "
+            "see https://docs.python.org/3.5/library/logging.config.html",
+       default='../logging.json')
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +223,10 @@ class FileHandler(RequestHandler):
 
 def main():
     application = make_app(debug=options.debug)
+
+    with open(options.logging_config, 'r') as conf:
+        conf_dictionary = json.load(conf)
+        logging.config.dictConfig(conf_dictionary)
 
     if options.prometheus_port:
         start_http_server(options.prometheus_port)

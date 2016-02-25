@@ -1,0 +1,23 @@
+{
+    "version": 1,
+    "disable_existing_loggers": true,
+    "handlers": {
+        "syslog": {
+            "level": "INFO",
+            "class": "logging.handlers.SysLogHandler",
+	    "address": "/dev/log"
+        }
+    },
+    "loggers": {
+        "tornado": {
+            "handlers": ["syslog"],
+            "level": "INFO",
+            "propagate": true
+        },
+        "blockserver": {
+            "handlers": ["syslog"],
+            "level": "INFO",
+            "propagate": true
+        }
+    }
+}

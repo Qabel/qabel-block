@@ -1,0 +1,23 @@
+{
+    "version": 1,
+    "disable_existing_loggers": true,
+    "handlers": {
+        "file": {
+            "level": "INFO",
+            "class": "logging.FileHandler",
+            "filename": "info.log"
+        }
+    },
+    "loggers": {
+        "tornado": {
+            "handlers": ["file"],
+            "level": "INFO",
+            "propagate": true
+        },
+        "blockserver": {
+            "handlers": ["file"],
+            "level": "INFO",
+            "propagate": true
+        }
+    }
+}
