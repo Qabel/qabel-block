@@ -22,7 +22,7 @@ from blockserver import monitoring as mon
 define('debug', help="Enable debug output for tornado", default=False)
 define('asyncio', help="Run on the asyncio loop instead of the tornado IOLoop", default=False)
 define('transfers', help="Thread pool size for transfers", default=10)
-define('port', help="Port of this server", default='8888')
+define('port', help="Port of this server", default=8888)
 define('apisecret', help="API_SECRET of the accounting server", default='secret')
 define('noauth', help="Disable authentication", default=False)
 define('dummy_auth',

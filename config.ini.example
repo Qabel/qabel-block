@@ -1,0 +1,7 @@
+logging_config="logging.json"
+debug=False
+redis_host="localhost"
+redis_port=8765
+accounting_host="http://localhost:8877"
+port=8888
+api_secret="Foobar"
