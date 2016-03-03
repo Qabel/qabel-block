@@ -3,34 +3,7 @@ import json
 from tornado.options import options
 from glinda.testing import services
 
-from blockserver import server
-
-
-API_QUOTA = '/api/v0/quota/'
-
-
-@pytest.fixture
-def mock_log():
-    async def log(*args):
-        log.log.append(args)
-    log.log = []
-    return log
-
-
-@pytest.yield_fixture
-def app(mock_log, cache):
-    prev_auth = options.dummy_auth
-    prev_log = options.dummy_log
-    options.dummy_auth = 'MAGICFARYDUST'
-    options.dummy_log = True
-    yield server.make_app(
-            cache_cls=lambda: (lambda: cache),
-            log_callback=lambda: mock_log if options.dummy_log else server.send_log,
-            debug=True)
-    options.dummy_auth = prev_auth
-    options.dummy_log = prev_log
-
-
+API_QUOTA = '/api/v0/quota'
 @pytest.mark.gen_test
 def test_not_found(backend, http_client, path):
     response = yield http_client.fetch(path, raise_error=False)

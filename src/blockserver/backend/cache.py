@@ -38,18 +38,16 @@ class AbstractCache(ABC):
         size = int(size)
         return storage_object._replace(etag=etag, size=size)
 
-    def set_auth(self, authentication_token: str, prefix: str, method: str, value: bool):
-        if not isinstance(value, bool):
-            raise ValueError('Need a boolean value')
-        key = self._auth_key(authentication_token, prefix, method)
-        self._set_single(key, b'1' if value else b'0', AUTH_CACHE_EXPIRE)
+    def set_auth(self, authentication_token: str, value: int):
+        if not isinstance(value, int):
+            raise ValueError('Need an integer value')
+        self._set_single(authentication_token, str(value).encode('utf-8'), AUTH_CACHE_EXPIRE)
 
-    def get_auth(self, authentication_token: str, prefix: str, method: str):
-        key = self._auth_key(authentication_token, prefix, method)
-        allow = self._get_single(key)
-        if allow is None:
+    def get_auth(self, authentication_token: str) -> int:
+        user_id = self._get_single(authentication_token)
+        if user_id is None:
             raise KeyError('Element not found')
-        return allow == b'1'
+        return int(user_id)
 
     def _storage_key(self, storage_object):
         return self.STORAGE_PREFIX + file_key(storage_object)

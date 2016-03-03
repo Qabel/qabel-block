@@ -15,18 +15,16 @@ def test_storage_cache_basics(cache):
     assert cache.get_storage(without_etag) == with_etag
 
 
-token_and_prefix_get = 'MAGICFAIRYTALE', 'EXAMPLEPREFIX', 'get'
-token_and_prefix_post = 'MAGICFAIRYTALE', 'EXAMPLEPREFIX', 'post'
-token_and_prefix_delete = 'MAGICFAIRYTALE', 'EXAMPLEPREFIX', 'delete'
+AUTH_TOKEN = 'MAGICFAIRYTALE'
 
 
 def test_auth_cache_basics(cache):
     with pytest.raises(KeyError):
-        cache.get_auth(*token_and_prefix_get)
+        cache.get_auth(AUTH_TOKEN)
     with pytest.raises(ValueError):
-        cache.set_auth(*token_and_prefix_get, None)
-    cache.set_auth(*token_and_prefix_get, True)
-    assert cache.get_auth(*token_and_prefix_get) == True
-    cache.set_auth(*token_and_prefix_get, False)
-    assert cache.get_auth(*token_and_prefix_get) == False
+        cache.set_auth(AUTH_TOKEN, None)
+    cache.set_auth(AUTH_TOKEN, 1)
+    assert cache.get_auth(AUTH_TOKEN) == 1
+    cache.set_auth(AUTH_TOKEN, 2)
+    assert cache.get_auth(AUTH_TOKEN) == 2
 

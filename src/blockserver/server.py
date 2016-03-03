@@ -15,7 +15,7 @@ from tornado.httpclient import AsyncHTTPClient
 from tornado.options import define, options
 from tornado.web import Application, RequestHandler, stream_request_body
 
-from blockserver.backend import cache
+from blockserver.backend import cache, auth
 from blockserver.backend.transfer import AbstractTransfer, StorageObject, S3Transfer, DummyTransfer
 from blockserver import monitoring as mon
 
@@ -46,21 +46,6 @@ define('logging_config',
        default='../logging.json')
 
 logger = logging.getLogger(__name__)
-
-
-@mon.time(mon.WAIT_FOR_AUTH)
-async def check_auth(auth, prefix, file_path, action):
-    http_client = AsyncHTTPClient()
-    url = options.accounting_host + '/api/v0/auth/' + prefix + '/' + file_path
-    response = await http_client.fetch(
-        url, method=action, headers={'Authorization': auth, 'APISECRET': options.apisecret},
-        body=b'' if action == 'POST' else None, raise_error=False,
-    )
-    return response.code == 204
-
-
-async def dummy_auth(auth, prefix, file_path, action):
-    return auth == 'Token ' + options.dummy_auth and prefix == 'test'
 
 
 async def console_log(auth, storage_object: StorageObject, action: str, size: int):
@@ -139,16 +124,15 @@ class FileHandler(RequestHandler):
             return False
 
         try:
-            authorized = self.cache.get_auth(
-                self.auth_header, prefix, self.request.method)
+            user_id = self.cache.get_auth(self.auth_header)
         except KeyError:
-            authorized = await self.auth_callback(
-                self.auth_header, prefix, file_path, self.request.method)
-            self.cache.set_auth(
-                self.auth_header, prefix, self.request.method, authorized)
+            user_id = await self.auth_callback(self.auth_header)
+            self.cache.set_auth(self.auth_header, user_id)
             mon.COUNT_AUTH_CACHE_SETS.inc()
         else:
             mon.COUNT_AUTH_CACHE_HITS.inc()
+
+        authorized = True
 
         if not authorized:
             self.send_error(403, reason="Not authorized for this prefix")
@@ -257,9 +241,9 @@ def make_app(cache_cls=None, log_callback=None, debug=False):
                 return True
             return noauth
         if options.dummy_auth:
-            return dummy_auth
+            return auth.DummyAuth.auth
         else:
-            return check_auth
+            return auth.AccountingServerAuth.auth
 
     if cache_cls is None:
         def cache_cls():
