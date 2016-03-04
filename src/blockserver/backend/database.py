@@ -35,14 +35,22 @@ class AbstractUserDatabase(ABC):
 
 class PostgresUserDatabase(AbstractUserDatabase):
 
+    VERSION = 1
+
+    BASE_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS version (
+    id integer PRIMARY KEY
+    )"""
+
     SCHEMA = """
-    CREATE TABLE IF NOT EXISTS users (
+    CREATE TABLE users (
     id integer PRIMARY  KEY,
     max_quota integer DEFAULT {0},
     download_traffic bigint DEFAULT 0,
     size bigint DEFAULT 0,
     prefixes CHARACTER(36)[]
-    )
+    );
+    CREATE INDEX prefix_idx ON users USING GIN (prefixes);
     """.format(AbstractUserDatabase.DEFAULT_QUOTA)
 
     def __init__(self, connection: psycopg2.extensions.connection):
@@ -56,11 +64,18 @@ class PostgresUserDatabase(AbstractUserDatabase):
     def init_db(self):
         with self.connection:
             cur = self.connection.cursor()
-            cur.execute(self.SCHEMA)
+            cur.execute(self.BASE_SCHEMA)
+            cur.execute('SELECT MAX(id) FROM version')
+            result = cur.fetchone()
+            version = result[0]
+            if version is None:
+                version = 0
+            if self.VERSION > version:
+                self._migrate(cur, result[0], self.VERSION)
 
     def drop_db(self):
         with self._cur() as cur:
-            cur.execute('DROP TABLE IF EXISTS users')
+            cur.execute('DROP TABLE IF EXISTS users, version')
 
     def create_prefix(self, user_id: int) -> str:
         self.assert_user_exists(user_id)
@@ -114,3 +129,8 @@ class PostgresUserDatabase(AbstractUserDatabase):
                 return 0
             else:
                 return result[0]
+
+    def _migrate(self, cur, from_version, to_version):
+        cur.execute(self.SCHEMA)
+        cur.execute('INSERT INTO version (id) VALUES (%s)', (to_version,))
+
