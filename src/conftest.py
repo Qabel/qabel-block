@@ -53,8 +53,8 @@ def auth_server(service_layer):
 
 
 @pytest.fixture
-def file_path():
-    return '/test/' + ''.join(random.choice(string.ascii_lowercase + string.digits)
+def file_path(prefix):
+    return '/{}/'.format(prefix) + ''.join(random.choice(string.ascii_lowercase + string.digits)
                           for _ in range(12))
 
 

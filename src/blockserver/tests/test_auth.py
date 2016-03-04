@@ -6,15 +6,17 @@ from pytest import fixture
 
 from blockserver.backend import auth
 from blockserver.backend.auth import DummyAuth, Auth
+from blockserver.backend.util import User
 from conftest import make_coroutine
 
 
 @pytest.mark.gen_test
 def test_dummy_auth():
     cache = Mock()
-    assert (yield DummyAuth(cache).auth("Token RandomStuff")) == 0
-    assert (yield DummyAuth(cache).auth("Foobar")) == 0
-    assert (yield DummyAuth(cache).auth(None)) == 0
+    user = User(user_id=0, is_active=True)
+    assert (yield DummyAuth(cache).auth("Token RandomStuff")) == user
+    assert (yield DummyAuth(cache).auth("Foobar")) == user
+    assert (yield DummyAuth(cache).auth(None)) == user
 
 
 @fixture

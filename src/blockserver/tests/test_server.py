@@ -16,9 +16,17 @@ def test_no_body(backend, http_client, path, headers):
 
 
 @pytest.mark.gen_test
-def test_no_auth(http_client, path, cache):
+def test_no_auth_get(http_client, path, cache):
     cache.flush()
     response = yield http_client.fetch(path, method='GET', raise_error=False)
+    assert response.code == 404
+
+
+@pytest.mark.gen_test
+def test_no_auth_post(http_client, path, cache):
+    cache.flush()
+    response = yield http_client.fetch(path, method='POST', body=b'Dummy',
+                                       raise_error=False)
     assert response.code == 403
 
 
@@ -101,19 +109,13 @@ def test_no_long_path(backend, http_client, path, headers):
 
 
 @pytest.mark.gen_test
-def test_create_prefix():
-    pytest.fail('Not implemented')
+def test_create_prefixes():
+    pytest.skip('Not implemented')
 
 
 @pytest.mark.gen_test
-def test_upload_denied():
-    pytest.fail("Not implemented")
-
-
-@pytest.mark.gen_test
-def test_upload_successful():
-    pytest.fail("Not implemented")
-
+def test_get_prefixes():
+    pytest.skip('Not implemented')
 
 @pytest.mark.gen_test
 def test_save_log(app, mocker, http_client, path, auth_path, headers,
@@ -128,6 +130,7 @@ def test_save_log(app, mocker, http_client, path, auth_path, headers,
     auth_server.add_response(services.Request('POST', auth_path),
                              services.Response(200, body=b'{"user_id": 0, "active":true}'))
     yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    yield http_client.fetch(path, method='POST', body=body, headers=headers)
     yield http_client.fetch(path, method='GET', headers=headers)
     yield http_client.fetch(path, method='DELETE', headers=headers)
 
@@ -137,21 +140,3 @@ def test_save_log(app, mocker, http_client, path, auth_path, headers,
     expected_traffic = [call(prefix, size)]
     assert trafifc_log.call_args_list == expected_traffic
 
-
-@pytest.mark.gen_test
-def test_log_handles_overwrites(app, mocker, auth_server, auth_path,
-                                http_client, path, headers, prefix):
-    body = b'Dummy'
-    body_larger = b'DummyDummy'
-    size = len(body)
-    quota_log = mocker.patch(
-        'blockserver.backend.database.PostgresUserDatabase.update_size')
-
-    auth_server.add_response(services.Request('POST', auth_path),
-                             services.Response(200, body=b'{"user_id": 0, "active":true}'))
-    yield http_client.fetch(path, method='POST', body=body, headers=headers)
-    yield http_client.fetch(path, method='POST', body=body_larger, headers=headers)
-    yield http_client.fetch(path, method='POST', body=body, headers=headers)
-
-    expected_quota = [call(prefix, size), call(prefix, size)]
-    assert quota_log.call_args_list == expected_quota

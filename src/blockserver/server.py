@@ -100,20 +100,24 @@ class FileHandler(RequestHandler):
     async def _authorize_request(self):
         try:
             prefix = self.path_kwargs['prefix']
-            file_path = self.path_kwargs['file_path']
         except KeyError:
-            self.send_error(403, reason="No correct prefix given")
+            self.send_error(400, reason="No correct prefix given")
             return False
 
-        self.auth_header = self.request.headers.get('Authorization', None)
-        if self.auth_header is None:
-            self.send_error(403, reason="No authorization given")
-            return False
+        if self.request.method == 'GET':
+            return True
+        else:
+            auth_header = self.request.headers.get('Authorization', None)
+            if auth_header is None:
+                self.send_error(403, reason="No authorization given")
+                return False
 
-        user = await self.auth_callback.auth(self.auth_header)
-        # TODO
-
-        authorized = True
+        try:
+            user = await self.auth_callback.auth(auth_header)
+        except auth.UserNotFound:
+            authorized = False
+        else:
+            authorized = self.database.has_prefix(user.user_id, prefix)
 
         if not authorized:
             self.send_error(403, reason="Not authorized for this prefix")
@@ -142,7 +146,7 @@ class FileHandler(RequestHandler):
                     self.write(chunk)
                 size = f_in.tell()
             mon.TRAFFIC_RESPONSE.inc(size)
-            yield self.save_log(self.auth_header, storage_object, 'get', size)
+            self.save_traffic_log(prefix, size)
         self.finish()
 
     @gen.coroutine
@@ -152,9 +156,7 @@ class FileHandler(RequestHandler):
                 prefix, file_path, self.temp.name)
         self.temp.close()
         mon.TRAFFIC_REQUEST.inc(storage_object.size)
-        yield self.save_log(self.auth_header,
-                                StorageObject(prefix, file_path, None, None),
-                                'store', size_diff)
+        self.save_size_log(prefix, size_diff)
         self.set_status(204)
         self.set_header('ETag', storage_object.etag)
         self.finish()
@@ -162,9 +164,7 @@ class FileHandler(RequestHandler):
     @gen.coroutine
     def delete(self, prefix, file_path):
         size = yield self.delete_file(prefix, file_path)
-        yield self.save_log(self.auth_header,
-                                StorageObject(prefix, file_path, None, None),
-                                'store', -size)
+        self.save_size_log(prefix, -size)
         self.set_status(204)
         self.finish()
 
@@ -187,9 +187,13 @@ class FileHandler(RequestHandler):
         mon.REQ_IN_PROGRESS.dec()
         mon.REQ_RESPONSE.observe(perf_counter() - self._start_time)
 
-    @gen.coroutine
-    def save_log(self, *args):
-        pass
+    def save_traffic_log(self, prefix, traffic):
+        if traffic > 0:
+            self.database.update_traffic(prefix, traffic)
+
+    def save_size_log(self, prefix, size):
+        if size != 0:
+            self.database.update_size(prefix, size)
 
 
 def main():

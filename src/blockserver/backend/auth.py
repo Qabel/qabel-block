@@ -21,7 +21,7 @@ class DummyAuth:
         pass
 
     async def auth(self, auth_header: str) -> int:
-        return 0
+        return User(user_id=0, is_active=True)
 
 
 class Auth:
