@@ -50,31 +50,6 @@ define('logging_config',
 logger = logging.getLogger(__name__)
 
 
-async def console_log(auth, storage_object: StorageObject, action: str, size: int):
-    print("{prefix} / {file_path} {action} {size}".format(
-        prefix=storage_object.prefix,
-        file_path=storage_object.file_path,
-        action=action,
-        size=size
-    ))
-
-
-@mon.time(mon.WAIT_FOR_QUOTA)
-async def send_log(auth, storage_object: StorageObject, action: str, size: int):
-    http_client = AsyncHTTPClient()
-    url = options.accounting_host + '/api/v0/quota/'
-    payload = {'prefix': storage_object.prefix, 'file_path': storage_object.file_path,
-               'action': action, 'size': size}
-    response = await http_client.fetch(url, method='POST',
-                            headers={'Authorization': auth,
-                                     'APISECRET': options.apisecret,
-                                     'Content-Type': 'application/json'},
-                            body=json.dumps(payload), raise_error=False)
-    if response.code >= 300:
-        mon.COUNT_QUOTA_ERROR.inc()
-        logger.error('Could not send log: {}'.format(response.body))
-
-
 @stream_request_body
 class FileHandler(RequestHandler):
     auth = None
@@ -83,7 +58,6 @@ class FileHandler(RequestHandler):
     def initialize(self,
                    transfer_cls=None,
                    get_auth_class=None,
-                   log_callback=None,
                    get_cache_class=None,
                    database_pool=None,
                    concurrent_transfers: int=10):
@@ -100,7 +74,6 @@ class FileHandler(RequestHandler):
         self.cache = get_cache_class()()  # type: cache.AbstractCache
         self.transfer = transfer_cls()(cache=self.cache)
         self.auth_callback = get_auth_class()(self.cache)
-        self.log_callback = log_callback()
         self.database_pool = database_pool
         self._connection = None
 
@@ -168,7 +141,7 @@ class FileHandler(RequestHandler):
                     self.write(chunk)
                 size = f_in.tell()
             mon.TRAFFIC_RESPONSE.inc(size)
-            yield self.log_callback(self.auth_header, storage_object, 'get', size)
+            yield self.save_log(self.auth_header, storage_object, 'get', size)
         self.finish()
 
     @gen.coroutine
@@ -178,7 +151,7 @@ class FileHandler(RequestHandler):
                 prefix, file_path, self.temp.name)
         self.temp.close()
         mon.TRAFFIC_REQUEST.inc(storage_object.size)
-        yield self.log_callback(self.auth_header,
+        yield self.save_log(self.auth_header,
                                 StorageObject(prefix, file_path, None, None),
                                 'store', size_diff)
         self.set_status(204)
@@ -188,7 +161,7 @@ class FileHandler(RequestHandler):
     @gen.coroutine
     def delete(self, prefix, file_path):
         size = yield self.delete_file(prefix, file_path)
-        yield self.log_callback(self.auth_header,
+        yield self.save_log(self.auth_header,
                                 StorageObject(prefix, file_path, None, None),
                                 'store', -size)
         self.set_status(204)
@@ -212,6 +185,10 @@ class FileHandler(RequestHandler):
             self.database_pool.putconn(self._connection)
         mon.REQ_IN_PROGRESS.dec()
         mon.REQ_RESPONSE.observe(perf_counter() - self._start_time)
+
+    @gen.coroutine
+    def save_log(self, *args):
+        pass
 
 
 def main():
@@ -240,7 +217,7 @@ def main():
         IOLoop.current().start()
 
 
-def make_app(cache_cls=None, log_callback=None, database_pool=None, debug=False):
+def make_app(cache_cls=None, database_pool=None, debug=False):
     if options.dummy and not debug:
         raise RuntimeError("Dummy backend is only allowed in debug mode")
 
@@ -257,10 +234,6 @@ def make_app(cache_cls=None, log_callback=None, database_pool=None, debug=False)
             else:
                 return partial(cache.RedisCache, host=options.redis_host, port=options.redis_port)
 
-    if log_callback is None:
-        def log_callback():
-            return console_log if options.dummy_log else send_log
-
     def get_transfer_cls():
         return DummyTransfer if options.dummy else S3Transfer
 
@@ -271,7 +244,6 @@ def make_app(cache_cls=None, log_callback=None, database_pool=None, debug=False)
         (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[/\d\w-]+)', FileHandler, dict(
             transfer_cls=get_transfer_cls,
             get_auth_class=get_auth_class,
-            log_callback=log_callback,
             get_cache_class=cache_cls,
             database_pool=database_pool,
             concurrent_transfers=options.transfers,

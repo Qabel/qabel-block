@@ -49,7 +49,7 @@ class PostgresUserDatabase(AbstractUserDatabase):
         self.connection = connection
 
     @contextmanager
-    def cur(self):
+    def _cur(self):
         with self.connection:
             yield self.connection.cursor()  # type: psycopg2.extensions.cursor
 
@@ -59,12 +59,12 @@ class PostgresUserDatabase(AbstractUserDatabase):
             cur.execute(self.SCHEMA)
 
     def drop_db(self):
-        with self.cur() as cur:
+        with self._cur() as cur:
             cur.execute('DROP TABLE IF EXISTS users')
 
     def create_prefix(self, user_id: int) -> UUID:
         self.assert_user_exists(user_id)
-        with self.cur() as cur:
+        with self._cur() as cur:
             prefix = uuid4()
             cur.execute(
                 'UPDATE users SET prefixes = prefixes || %s WHERE id=%s',
@@ -72,7 +72,7 @@ class PostgresUserDatabase(AbstractUserDatabase):
             return prefix
 
     def assert_user_exists(self, user_id):
-        with self.cur() as cur:
+        with self._cur() as cur:
             try:
                 cur.execute(
                         'INSERT INTO users (id) VALUES (%s)',
@@ -81,14 +81,14 @@ class PostgresUserDatabase(AbstractUserDatabase):
                 pass
 
     def has_prefix(self, user_id: int, prefix: UUID) -> bool:
-        with self.cur() as cur:
+        with self._cur() as cur:
             cur.execute(
                 'SELECT 1 FROM users WHERE id=%s AND %s = ANY (prefixes)',
                 (user_id, prefix))
             return cur.rowcount == 1
 
     def get_prefixes(self, user_id: int) -> List[UUID]:
-        with self.cur() as cur:
+        with self._cur() as cur:
             cur.execute(
                 'SELECT prefixes FROM users WHERE id=%s',
                 (user_id,))

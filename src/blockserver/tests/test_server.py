@@ -1,9 +1,8 @@
 import pytest
-import json
 from tornado.options import options
 from glinda.testing import services
+from unittest.mock import call
 
-API_QUOTA = '/api/v0/quota'
 @pytest.mark.gen_test
 def test_not_found(backend, http_client, path):
     response = yield http_client.fetch(path, raise_error=False)
@@ -96,70 +95,6 @@ def test_auth_backend_called(app, cache, http_client, path, auth_path, headers, 
 
 
 @pytest.mark.gen_test
-def test_log_is_called(app, http_client, path, headers, mock_log):
-    body = b'Dummy'
-    size = len(body)
-    yield http_client.fetch(path, method='POST', body=body, headers=headers)
-    log = mock_log.log
-    assert len(log) == 1
-    assert log[0][0] == headers['Authorization']
-    assert log[0][2] == 'store'
-    assert log[0][3] == size
-    yield http_client.fetch(path, method='GET', headers=headers)
-    assert len(log) == 2
-    assert log[1][2] == 'get'
-    assert log[1][3] == size
-    yield http_client.fetch(path, method='DELETE', headers=headers)
-    assert len(log) == 3
-    assert log[2][2] == 'store'
-    assert log[2][3] == -size
-
-
-@pytest.mark.gen_test
-def test_send_log(app, http_client, path, auth_path, headers, auth_server, file_path):
-    body = b'Dummy'
-    size = len(body)
-    _, prefix, file_name = file_path.split('/')
-    auth_server.add_response(services.Request('POST', API_QUOTA), services.Response(204))
-    auth_server.add_response(services.Request('POST', auth_path),
-                             services.Response(200, body=b'{"user_id": 0, "active":true}'))
-    yield http_client.fetch(path, method='POST', body=body, headers=headers)
-    yield http_client.fetch(path, method='GET', headers=headers)
-    yield http_client.fetch(path, method='DELETE', headers=headers)
-    (store, s_body), (get, g_body), (delete, d_body) = (
-        (request, json.loads(request.body.decode('UTF-8')))
-        for request in auth_server.get_requests_for(API_QUOTA))
-
-    for request in (store, get, delete):
-        assert request.headers['Authorization'] == headers['Authorization']
-        assert request.headers['APISECRET'] == options.apisecret
-
-    for body in (s_body, g_body, d_body):
-        assert body['prefix'] == prefix
-        assert body['file_path'] == file_name
-
-    assert s_body['size'] == size
-    assert g_body['size'] == size
-    assert d_body['size'] == -size
-
-    assert s_body['action'] == 'store'
-    assert g_body['action'] == 'get'
-    assert d_body['action'] == 'store'
-
-
-@pytest.mark.gen_test
-def test_log_handles_overwrites(app, http_client, path, headers, mock_log):
-    body = b'Dummy'
-    body_larger = b'DummyDummy'
-    size = len(body)
-    yield http_client.fetch(path, method='POST', body=body, headers=headers)
-    yield http_client.fetch(path, method='POST', body=body_larger, headers=headers)
-    yield http_client.fetch(path, method='POST', body=body, headers=headers)
-    sizes = [entry[3] for entry in mock_log.log]
-    assert sizes == [size, size, -size]
-
-
-@pytest.mark.gen_test
 def test_no_long_path(backend, http_client, path, headers):
     response = yield http_client.fetch(path+'/blocks/foobar', method='POST', body=b'', headers=headers)
     assert response.code == 204
@@ -171,15 +106,52 @@ def test_create_prefix():
 
 
 @pytest.mark.gen_test
-def test_quota_increase():
-    pytest.fail('Not implemented')
+def test_upload_denied():
+    pytest.fail("Not implemented")
 
 
 @pytest.mark.gen_test
-def test_quote_decrease():
-    pytest.fail('Not implemented')
+def test_upload_successful():
+    pytest.fail("Not implemented")
 
 
 @pytest.mark.gen_test
-def test_traffic_for_user():
-    pytest.fail('Not implemented')
+def test_save_log(app, mocker, http_client, path, auth_path, headers,
+                  auth_server, file_path, prefix):
+    quota_log = mocker.patch(
+        'blockserver.backend.database.PostgresUserDatabase.update_quota')
+    trafifc_log = mocker.patch(
+        'blockserver.backend.database.PostgresUserDatabase.update_traffic')
+    body = b'Dummy'
+    size = len(body)
+    _, prefix_name, file_name = file_path.split('/')
+    auth_server.add_response(services.Request('POST', auth_path),
+                             services.Response(200, body=b'{"user_id": 0, "active":true}'))
+    yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    yield http_client.fetch(path, method='GET', headers=headers)
+    yield http_client.fetch(path, method='DELETE', headers=headers)
+
+    expected_quota = [call(prefix, size), call(prefix, -size)]
+    assert quota_log.call_args_list == expected_quota
+
+    expected_traffic = [call(prefix, size)]
+    assert trafifc_log.call_args_list == expected_traffic
+
+
+@pytest.mark.gen_test
+def test_log_handles_overwrites(app, mocker, auth_server, auth_path,
+                                http_client, path, headers, prefix):
+    body = b'Dummy'
+    body_larger = b'DummyDummy'
+    size = len(body)
+    quota_log = mocker.patch(
+        'blockserver.backend.database.PostgresUserDatabase.update_quota')
+
+    auth_server.add_response(services.Request('POST', auth_path),
+                             services.Response(200, body=b'{"user_id": 0, "active":true}'))
+    yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    yield http_client.fetch(path, method='POST', body=body_larger, headers=headers)
+    yield http_client.fetch(path, method='POST', body=body, headers=headers)
+
+    expected_quota = [call(prefix, size), call(prefix, size)]
+    assert quota_log.call_args_list == expected_quota

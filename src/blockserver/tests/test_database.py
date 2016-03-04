@@ -1,5 +1,6 @@
+import pytest
+
 from blockserver.backend.database import AbstractUserDatabase, PostgresUserDatabase
-from blockserver import server
 import uuid
 UID = 1
 
@@ -44,3 +45,15 @@ def test_nonexistent_prefixes(pg_db):
 def test_idempotent_init_db(pg_db):
     pg_db.init_db()
     pg_db.init_db()
+
+
+def test_used_space_inc():
+    pytest.fail('Not implemented')
+
+
+def test_used_space_dec():
+    pytest.fail('Not implemented')
+
+
+def test_traffic_for_user():
+    pytest.fail('Not implemented')

@@ -131,23 +131,14 @@ def pg_db(pg_connection):
     return db
 
 
-@pytest.fixture
-def mock_log():
-    async def log(*args):
-        log.log.append(args)
-    log.log = []
-    return log
-
-
 @pytest.yield_fixture
-def app(mock_log, cache, pg_pool):
+def app(cache, pg_pool):
     prev_auth = options.dummy_auth
     prev_log = options.dummy_log
     options.dummy_auth = 'MAGICFARYDUST'
     options.dummy_log = True
     yield blockserver.server.make_app(
             cache_cls=lambda: (lambda: cache),
-            log_callback=lambda: mock_log if options.dummy_log else blockserver.server.send_log,
             database_pool=pg_pool,
             debug=True)
     options.dummy_auth = prev_auth
@@ -163,6 +154,16 @@ def transfer(request, cache):
         transfer_module.files = {}
     if transfer_backend == 's3':
         yield transfer_module.S3Transfer(cache)
+
+
+@pytest.fixture
+def user_id():
+    return 0
+
+
+@pytest.fixture
+def prefix(pg_db, user_id):
+    return pg_db.create_prefix(user_id)
 
 
 def pytest_addoption(parser):
