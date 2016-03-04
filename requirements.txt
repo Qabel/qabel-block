@@ -8,3 +8,4 @@ pytest-tornado==0.4.4
 prometheus_client==0.0.13
 wrapt==1.10.6
 asyncio==3.4.3
+psycopg2==2.6.1
