@@ -24,6 +24,7 @@ define('debug', help="Enable debug output for tornado", default=False)
 define('asyncio', help="Run on the asyncio loop instead of the tornado IOLoop", default=False)
 define('transfers', help="Thread pool size for transfers", default=10)
 define('port', help="Port of this server", default=8888)
+define('address', help="Address of this server", default="localhost")
 define('apisecret', help="API_SECRET of the accounting server", default='secret')
 define('psql_dsn', help="libq connection string for postgresql",
         default='postgresql://postgres:postgres@localhost/qabel-block')
@@ -202,7 +203,7 @@ def main():
         start_http_server(options.prometheus_port)
 
     if options.debug:
-        application.listen(options.port)
+        application.listen(address=options.address, port=options.port)
     else:
         server = tornado.httpserver.HTTPServer(application)
         server.bind(options.port)
