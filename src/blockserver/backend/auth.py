@@ -20,7 +20,7 @@ class DummyAuth:
     def __init__(self, cache_backend):
         pass
 
-    async def auth(cache_backend: AbstractCache, auth_header: str) -> int:
+    async def auth(self, auth_header: str) -> int:
         return 0
 
 
