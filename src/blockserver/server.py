@@ -27,7 +27,6 @@ define('port', help="Port of this server", default=8888)
 define('apisecret', help="API_SECRET of the accounting server", default='secret')
 define('psql_dsn', help="libq connection string for postgresql",
         default='postgresql://postgres:postgres@localhost/qabel-block')
-define('noauth', help="Disable authentication", default=False)
 define('dummy_auth',
        help="Authenticate with this authentication token [Example: MAGICFARYDUST] "
             "for the prefix 'test'", default=None, type=str)
@@ -83,9 +82,9 @@ class FileHandler(RequestHandler):
 
     def initialize(self,
                    transfer_cls=None,
-                   auth_callback=None,
+                   get_auth_class=None,
                    log_callback=None,
-                   cache_cls=None,
+                   get_cache_class=None,
                    database_pool=None,
                    concurrent_transfers: int=10):
         """
@@ -98,9 +97,9 @@ class FileHandler(RequestHandler):
         :return:
         """
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(options.transfers)
-        self.cache = cache_cls()()  # type: cache.AbstractCache
+        self.cache = get_cache_class()()  # type: cache.AbstractCache
         self.transfer = transfer_cls()(cache=self.cache)
-        self.auth_callback = auth_callback()(self.cache)
+        self.auth_callback = get_auth_class()(self.cache)
         self.log_callback = log_callback()
         self.database_pool = database_pool
         self._connection = None
@@ -245,11 +244,7 @@ def make_app(cache_cls=None, log_callback=None, database_pool=None, debug=False)
     if options.dummy and not debug:
         raise RuntimeError("Dummy backend is only allowed in debug mode")
 
-    def get_auth_func():
-        if options.noauth:
-            async def noauth(*args):
-                return True
-            return noauth
+    def get_auth_class():
         if options.dummy_auth:
             return auth.DummyAuth
         else:
@@ -275,9 +270,9 @@ def make_app(cache_cls=None, log_callback=None, database_pool=None, debug=False)
     application = Application([
         (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[/\d\w-]+)', FileHandler, dict(
             transfer_cls=get_transfer_cls,
-            auth_callback=get_auth_func,
+            get_auth_class=get_auth_class,
             log_callback=log_callback,
-            cache_cls=cache_cls,
+            get_cache_class=cache_cls,
             database_pool=database_pool,
             concurrent_transfers=options.transfers,
         ))

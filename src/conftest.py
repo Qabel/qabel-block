@@ -59,8 +59,8 @@ def file_path():
 
 
 @pytest.fixture
-def auth_path(file_path):
-    return '/api/v0/auth' + file_path
+def auth_path():
+    return '/api/v0/auth/'
 
 
 @pytest.fixture

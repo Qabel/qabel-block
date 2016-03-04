@@ -48,7 +48,11 @@ class AccountingServerAuth:
     async def request(auth_header: str) -> User:
         request_body = json.dumps({'auth': auth_header})
         response = await AccountingServerAuth.send_request(request_body)
-        body = json.loads(response.body.decode('utf-8'))
+        try:
+            body = json.loads(response.body.decode('utf-8'))
+        except json.JSONDecodeError as e:
+            raise AuthError(e)
+
         try:
             return User(user_id=body.get('user_id'), is_active=body.get('active'))
         except KeyError:

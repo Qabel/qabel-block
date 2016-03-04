@@ -86,46 +86,13 @@ def test_etag_modified(backend, http_client, path, headers):
 def test_auth_backend_called(app, cache, http_client, path, auth_path, headers, auth_server, file_path):
     body = b'Dummy'
     _, prefix, file_name = file_path.split('/')
-    size = len(body)
-    auth_server.add_response(services.Request('POST', auth_path), services.Response(204))
-    auth_server.add_response(services.Request('DELETE', auth_path), services.Response(204))
-    auth_server.add_response(services.Request('POST', API_QUOTA), services.Response(204))
+    auth_server.add_response(services.Request('POST', auth_path),
+                             services.Response(200, body=b'{"user_id": 0, "active":true}'))
     response = yield http_client.fetch(path, method='POST', body=body, headers=headers,
                                        raise_error=False)
     auth_request = auth_server.get_request(auth_path)
-    assert len(auth_request.body) == 0
-    assert auth_request.headers['Authorization'] == headers['Authorization']
     assert auth_request.headers['APISECRET'] == options.apisecret
     assert response.code == 204
-
-    log_request = auth_server.get_request(API_QUOTA)
-    body = json.loads(log_request.body.decode('UTF-8'))
-    assert body == {'prefix': prefix, 'file_path': file_name, 'action': 'store', 'size': size}
-    assert log_request.headers['Authorization'] == headers['Authorization']
-    assert log_request.headers['APISECRET'] == options.apisecret
-
-    response = yield http_client.fetch(path, method='DELETE', headers=headers, raise_error=False)
-    assert response.code == 204
-
-
-@pytest.mark.gen_test
-def test_auth_backend_called_for_get(app, http_client, path, auth_path, headers, auth_server):
-    auth_server.add_response(services.Request('GET', auth_path), services.Response(204))
-    auth_server.add_response(services.Request('POST', '/api/v0/quota'), services.Response(204))
-    yield http_client.fetch(path, method='GET', headers=headers,
-                                       raise_error=False)
-    auth_request = auth_server.get_request(auth_path)
-    assert len(auth_request.body) == 0
-    assert auth_request.headers['Authorization'] == headers['Authorization']
-
-
-@pytest.mark.gen_test
-def test_auth_backend_called_for_post_and_denied(
-        app, cache, http_client, path, auth_path, headers, auth_server):
-    auth_server.add_response(services.Request('POST', auth_path), services.Response(403))
-    response = yield http_client.fetch(path, method='POST', headers=headers, body=b'Dummy',
-                                       raise_error=False)
-    assert response.code == 403
 
 
 @pytest.mark.gen_test
@@ -154,9 +121,8 @@ def test_send_log(app, http_client, path, auth_path, headers, auth_server, file_
     size = len(body)
     _, prefix, file_name = file_path.split('/')
     auth_server.add_response(services.Request('POST', API_QUOTA), services.Response(204))
-    auth_server.add_response(services.Request('POST', auth_path), services.Response(204))
-    auth_server.add_response(services.Request('GET', auth_path), services.Response(204))
-    auth_server.add_response(services.Request('DELETE', auth_path), services.Response(204))
+    auth_server.add_response(services.Request('POST', auth_path),
+                             services.Response(200, body=b'{"user_id": 0, "active":true}'))
     yield http_client.fetch(path, method='POST', body=body, headers=headers)
     yield http_client.fetch(path, method='GET', headers=headers)
     yield http_client.fetch(path, method='DELETE', headers=headers)
@@ -197,3 +163,23 @@ def test_log_handles_overwrites(app, http_client, path, headers, mock_log):
 def test_no_long_path(backend, http_client, path, headers):
     response = yield http_client.fetch(path+'/blocks/foobar', method='POST', body=b'', headers=headers)
     assert response.code == 204
+
+
+@pytest.mark.gen_test
+def test_create_prefix():
+    pytest.fail('Not implemented')
+
+
+@pytest.mark.gen_test
+def test_quota_increase():
+    pytest.fail('Not implemented')
+
+
+@pytest.mark.gen_test
+def test_quote_decrease():
+    pytest.fail('Not implemented')
+
+
+@pytest.mark.gen_test
+def test_traffic_for_user():
+    pytest.fail('Not implemented')
