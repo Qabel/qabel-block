@@ -50,21 +50,24 @@ def test_used_space_inc(pg_db, user_id, prefix):
     size = 500
     second_prefix = pg_db.create_prefix(user_id)
     pg_db.update_size(prefix, size)
-    assert pg_db.get_size(prefix) == size
+    assert pg_db.get_size(user_id) == size
 
     pg_db.update_size(second_prefix, size)
-    assert pg_db.get_size(prefix) == size * 2
+    assert pg_db.get_size(user_id) == size * 2
 
 
 def test_used_space_dec(pg_db, user_id, prefix):
     size = 500
     second_prefix = pg_db.create_prefix(user_id)
     pg_db.update_size(prefix, size)
-    assert pg_db.get_size(prefix) == size
+    assert pg_db.get_size(user_id) == size
 
     pg_db.update_size(second_prefix, -size)
-    assert pg_db.get_size(prefix) == 0
+    assert pg_db.get_size(user_id) == 0
 
 
-def test_traffic_for_user():
-    pytest.fail('Not implemented')
+def test_traffic_for_prefix(pg_db, user_id, prefix):
+    assert pg_db.get_traffic(user_id) == 0
+    amount = 500
+    pg_db.update_traffic(prefix, amount)
+    assert pg_db.get_traffic(user_id) == amount

@@ -32,6 +32,22 @@ class AbstractUserDatabase(ABC):
     def get_prefixes(self, user_id: int) -> List[str]:
         pass
 
+    @abstractmethod
+    def get_size(self, user_id: int) -> int:
+        pass
+
+    @abstractmethod
+    def get_traffic(self, user_id: int) -> int:
+        pass
+
+    @abstractmethod
+    def update_size(self, prefix: str, size: int):
+        pass
+
+    @abstractmethod
+    def update_traffic(self, prefix: str, traffic: int):
+        pass
+
 
 class PostgresUserDatabase(AbstractUserDatabase):
 
@@ -116,19 +132,34 @@ class PostgresUserDatabase(AbstractUserDatabase):
     def update_size(self, prefix: str, change: int):
         with self._cur() as cur:
             cur.execute(
-                'UPDATE users SET size = size + %s WHERE %s = ANY (prefixes)',
+                'UPDATE users SET size = size + %s '
+                'WHERE ARRAY[%s::CHARACTER(36)] <@ prefixes',
                 (change, prefix))
 
-    def get_size(self, prefix: str) -> int:
+    def get_size(self, user_id: int) -> int:
         with self._cur() as cur:
             cur.execute(
-                'SELECT size FROM users WHERE %s = ANY (prefixes)',
-                (prefix,))
+                'SELECT size FROM users WHERE id = %s',
+                (user_id,))
             result = cur.fetchone()
             if result is None:
                 return 0
             else:
                 return result[0]
+
+    def update_traffic(self, prefix: str, amount: int):
+        with self._cur() as cur:
+            cur.execute(
+                'UPDATE users SET download_traffic = download_traffic + %s'
+                'WHERE ARRAY[%s::CHARACTER(36)] <@ prefixes', (amount, prefix))
+
+    def get_traffic(self, user_id: int) -> int:
+        with self._cur() as cur:
+            cur.execute('SELECT download_traffic FROM users WHERE id = %s', (user_id,))
+            traffic, = cur.fetchone()
+            if traffic is None:
+                traffic = 0
+            return traffic
 
     def _migrate(self, cur, from_version, to_version):
         cur.execute(self.SCHEMA)
