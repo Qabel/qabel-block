@@ -119,7 +119,7 @@ def test_upload_successful():
 def test_save_log(app, mocker, http_client, path, auth_path, headers,
                   auth_server, file_path, prefix):
     quota_log = mocker.patch(
-        'blockserver.backend.database.PostgresUserDatabase.update_quota')
+        'blockserver.backend.database.PostgresUserDatabase.update_size')
     trafifc_log = mocker.patch(
         'blockserver.backend.database.PostgresUserDatabase.update_traffic')
     body = b'Dummy'
@@ -145,7 +145,7 @@ def test_log_handles_overwrites(app, mocker, auth_server, auth_path,
     body_larger = b'DummyDummy'
     size = len(body)
     quota_log = mocker.patch(
-        'blockserver.backend.database.PostgresUserDatabase.update_quota')
+        'blockserver.backend.database.PostgresUserDatabase.update_size')
 
     auth_server.add_response(services.Request('POST', auth_path),
                              services.Response(200, body=b'{"user_id": 0, "active":true}'))

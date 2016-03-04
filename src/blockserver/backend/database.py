@@ -2,7 +2,7 @@ from typing import List
 import psycopg2
 import psycopg2.extensions
 from abc import abstractmethod, ABC
-from uuid import UUID, uuid4
+from uuid import uuid4
 import psycopg2.extras
 psycopg2.extras.register_uuid()
 from contextlib import contextmanager
@@ -21,15 +21,15 @@ class AbstractUserDatabase(ABC):
         pass
 
     @abstractmethod
-    def create_prefix(self, user_id: int) -> UUID:
+    def create_prefix(self, user_id: int) -> str:
         pass
 
     @abstractmethod
-    def has_prefix(self, user_id: int, prefix: UUID) -> bool:
+    def has_prefix(self, user_id: int, prefix: str) -> bool:
         pass
 
     @abstractmethod
-    def get_prefixes(self, user_id: int) -> List[UUID]:
+    def get_prefixes(self, user_id: int) -> List[str]:
         pass
 
 
@@ -41,7 +41,7 @@ class PostgresUserDatabase(AbstractUserDatabase):
     max_quota integer DEFAULT {0},
     download_traffic bigint DEFAULT 0,
     size bigint DEFAULT 0,
-    prefixes uuid[]
+    prefixes CHARACTER(36)[]
     )
     """.format(AbstractUserDatabase.DEFAULT_QUOTA)
 
@@ -62,12 +62,12 @@ class PostgresUserDatabase(AbstractUserDatabase):
         with self._cur() as cur:
             cur.execute('DROP TABLE IF EXISTS users')
 
-    def create_prefix(self, user_id: int) -> UUID:
+    def create_prefix(self, user_id: int) -> str:
         self.assert_user_exists(user_id)
         with self._cur() as cur:
-            prefix = uuid4()
+            prefix = str(uuid4())
             cur.execute(
-                'UPDATE users SET prefixes = prefixes || %s WHERE id=%s',
+                'UPDATE users SET prefixes = prefixes || %s::CHARACTER(36) WHERE id=%s',
                 (prefix, user_id))
             return prefix
 
@@ -80,14 +80,14 @@ class PostgresUserDatabase(AbstractUserDatabase):
             except psycopg2.IntegrityError:
                 pass
 
-    def has_prefix(self, user_id: int, prefix: UUID) -> bool:
+    def has_prefix(self, user_id: int, prefix: str) -> bool:
         with self._cur() as cur:
             cur.execute(
-                'SELECT 1 FROM users WHERE id=%s AND %s = ANY (prefixes)',
+                'SELECT 1 FROM users WHERE id=%s AND ARRAY[%s::CHARACTER(36)] <@ prefixes',
                 (user_id, prefix))
             return cur.rowcount == 1
 
-    def get_prefixes(self, user_id: int) -> List[UUID]:
+    def get_prefixes(self, user_id: int) -> List[str]:
         with self._cur() as cur:
             cur.execute(
                 'SELECT prefixes FROM users WHERE id=%s',
@@ -95,5 +95,22 @@ class PostgresUserDatabase(AbstractUserDatabase):
             result = cur.fetchone()
             if result is None:
                 return []
+            else:
+                return result[0]
+
+    def update_size(self, prefix: str, change: int):
+        with self._cur() as cur:
+            cur.execute(
+                'UPDATE users SET size = size + %s WHERE %s = ANY (prefixes)',
+                (change, prefix))
+
+    def get_size(self, prefix: str) -> int:
+        with self._cur() as cur:
+            cur.execute(
+                'SELECT size FROM users WHERE %s = ANY (prefixes)',
+                (prefix,))
+            result = cur.fetchone()
+            if result is None:
+                return 0
             else:
                 return result[0]

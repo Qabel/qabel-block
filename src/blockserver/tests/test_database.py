@@ -34,7 +34,6 @@ def test_retrieve_prefixes(pg_db):
     p1 = pg_db.create_prefix(UID)
     p2 = pg_db.create_prefix(UID)
     prefixes = pg_db.get_prefixes(UID)
-    assert isinstance(prefixes[0], uuid.UUID)
     assert set(prefixes) == {p1, p2}
 
 
@@ -47,12 +46,24 @@ def test_idempotent_init_db(pg_db):
     pg_db.init_db()
 
 
-def test_used_space_inc():
-    pytest.fail('Not implemented')
+def test_used_space_inc(pg_db, user_id, prefix):
+    size = 500
+    second_prefix = pg_db.create_prefix(user_id)
+    pg_db.update_size(prefix, size)
+    assert pg_db.get_size(prefix) == size
+
+    pg_db.update_size(second_prefix, size)
+    assert pg_db.get_size(prefix) == size * 2
 
 
-def test_used_space_dec():
-    pytest.fail('Not implemented')
+def test_used_space_dec(pg_db, user_id, prefix):
+    size = 500
+    second_prefix = pg_db.create_prefix(user_id)
+    pg_db.update_size(prefix, size)
+    assert pg_db.get_size(prefix) == size
+
+    pg_db.update_size(second_prefix, -size)
+    assert pg_db.get_size(prefix) == 0
 
 
 def test_traffic_for_user():
