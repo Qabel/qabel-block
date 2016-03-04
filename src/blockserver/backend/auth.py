@@ -1,6 +1,9 @@
-from blockserver import monitoring as mon
 from tornado.httpclient import AsyncHTTPClient, HTTPError
 from blockserver.server import options
+from blockserver.backend.cache import AbstractCache
+from blockserver.backend.util import User
+from blockserver import monitoring as mon
+
 import json
 
 
@@ -14,20 +17,27 @@ class UserNotFound(AuthError):
 
 class DummyAuth:
 
-    @staticmethod
-    async def auth(auth_header: str) -> int:
+    def __init__(self, cache_backend):
+        pass
+
+    async def auth(cache_backend: AbstractCache, auth_header: str) -> int:
         return 0
 
 
 class Auth:
 
-    @staticmethod
-    async def auth(auth_header: str) -> int:
-        user = CacheAuth.auth(auth_header)
-        if user is None:
+    def __init__(self, cache_backend):
+        self.cache_backend = cache_backend
+
+    async def auth(self, auth_header: str) -> User:
+        try:
+            user = CacheAuth.auth(self.cache_backend, auth_header)
+        except KeyError:
             user = await AccountingServerAuth.request(auth_header)
-        if user is None:
-            raise UserNotFound(auth_header)
+            CacheAuth.set(self.cache_backend, auth_header, user)
+            mon.COUNT_AUTH_CACHE_SETS.inc()
+        else:
+            mon.COUNT_AUTH_CACHE_HITS.inc()
         return user
 
 
@@ -35,11 +45,14 @@ class AccountingServerAuth:
 
     @staticmethod
     @mon.time(mon.WAIT_FOR_AUTH)
-    async def request(auth_header: str) -> int:
+    async def request(auth_header: str) -> User:
         request_body = json.dumps({'auth': auth_header})
         response = await AccountingServerAuth.send_request(request_body)
-        body = json.loads(response.content)
-        return body.get('user_id', None)
+        body = json.loads(response.body.decode('utf-8'))
+        try:
+            return User(user_id=body.get('user_id'), is_active=body.get('active'))
+        except KeyError:
+            raise UserNotFound('Invalid response from accounting server')
 
     @staticmethod
     async def send_request(request_body):
@@ -67,5 +80,9 @@ class AccountingServerAuth:
 class CacheAuth:
 
     @staticmethod
-    def auth(auth_header: str) -> int:
-        pass
+    def auth(cache_backend: AbstractCache, auth_header: str) -> User:
+        return cache_backend.get_auth(auth_header)
+
+    @staticmethod
+    def set(cache_backend: AbstractCache, auth_header: str, user: User):
+        return cache_backend.set_auth(auth_header, user)

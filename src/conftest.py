@@ -112,6 +112,18 @@ def pg_connection(request, postgresql_proc):
 
 
 @pytest.fixture
+def pg_pool(pg_connection):
+    class TestPool:
+
+        def getconn(self):
+            return pg_connection
+
+        def putconn(self, conn):
+            pass
+    return TestPool()
+
+
+@pytest.fixture
 def pg_db(pg_connection):
     db = PostgresUserDatabase(pg_connection)
     db.drop_db()
@@ -128,7 +140,7 @@ def mock_log():
 
 
 @pytest.yield_fixture
-def app(mock_log, cache):
+def app(mock_log, cache, pg_pool):
     prev_auth = options.dummy_auth
     prev_log = options.dummy_log
     options.dummy_auth = 'MAGICFARYDUST'
@@ -136,6 +148,7 @@ def app(mock_log, cache):
     yield blockserver.server.make_app(
             cache_cls=lambda: (lambda: cache),
             log_callback=lambda: mock_log if options.dummy_log else blockserver.server.send_log,
+            database_pool=pg_pool,
             debug=True)
     options.dummy_auth = prev_auth
     options.dummy_log = prev_log

@@ -1,6 +1,7 @@
 import pytest
 
 from blockserver.backend.transfer import StorageObject
+from blockserver.backend.auth import User
 
 with_etag = StorageObject('foo', 'bar', 'etag', size=10)
 without_etag = with_etag._replace(etag=None, size=None)  # type: StorageObject
@@ -23,8 +24,10 @@ def test_auth_cache_basics(cache):
         cache.get_auth(AUTH_TOKEN)
     with pytest.raises(ValueError):
         cache.set_auth(AUTH_TOKEN, None)
-    cache.set_auth(AUTH_TOKEN, 1)
-    assert cache.get_auth(AUTH_TOKEN) == 1
-    cache.set_auth(AUTH_TOKEN, 2)
-    assert cache.get_auth(AUTH_TOKEN) == 2
+    user = User(0, True)
+    cache.set_auth(AUTH_TOKEN, user)
+    assert cache.get_auth(AUTH_TOKEN) == user
+    user_2 = User(2, False)
+    cache.set_auth(AUTH_TOKEN, user_2)
+    assert cache.get_auth(AUTH_TOKEN) == user_2
 

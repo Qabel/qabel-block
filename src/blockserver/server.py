@@ -2,7 +2,6 @@ import json
 import logging
 import logging.config
 from time import perf_counter
-from typing import Callable
 from prometheus_client import start_http_server
 
 import tempfile
@@ -16,7 +15,9 @@ from tornado.options import define, options
 from tornado.web import Application, RequestHandler, stream_request_body
 
 from blockserver.backend import cache, auth
-from blockserver.backend.transfer import AbstractTransfer, StorageObject, S3Transfer, DummyTransfer
+from blockserver.backend.transfer import StorageObject, S3Transfer, DummyTransfer
+from blockserver.backend.database import PostgresUserDatabase
+from psycopg2.pool import SimpleConnectionPool
 from blockserver import monitoring as mon
 
 define('debug', help="Enable debug output for tornado", default=False)
@@ -24,6 +25,8 @@ define('asyncio', help="Run on the asyncio loop instead of the tornado IOLoop", 
 define('transfers', help="Thread pool size for transfers", default=10)
 define('port', help="Port of this server", default=8888)
 define('apisecret', help="API_SECRET of the accounting server", default='secret')
+define('psql_dsn', help="libq connection string for postgresql",
+        default='postgresql://postgres:postgres@localhost/qabel-block')
 define('noauth', help="Disable authentication", default=False)
 define('dummy_auth',
        help="Authenticate with this authentication token [Example: MAGICFARYDUST] "
@@ -79,12 +82,14 @@ class FileHandler(RequestHandler):
     streamer = None
 
     def initialize(self,
-                   transfer_cls: Callable[[], Callable[[], AbstractTransfer]]=None,
-                   auth_callback: Callable[[], Callable[[str, str, str, str], bool]]=None,
-                   log_callback: Callable[[], Callable[[StorageObject, str, int], None]]=None,
-                   cache_cls: Callable[[], Callable[[], cache.AbstractCache]]=None,
+                   transfer_cls=None,
+                   auth_callback=None,
+                   log_callback=None,
+                   cache_cls=None,
+                   database_pool=None,
                    concurrent_transfers: int=10):
         """
+        :param database_pool: Postgresql database pool
         :param transfer_cls: A function that returns a Transfer class
         :param auth_callback: A function that returns a callback used for authorization
         :param log_callback: A function that returns a callback used to log an action
@@ -95,8 +100,17 @@ class FileHandler(RequestHandler):
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(options.transfers)
         self.cache = cache_cls()()  # type: cache.AbstractCache
         self.transfer = transfer_cls()(cache=self.cache)
-        self.auth_callback = auth_callback()
+        self.auth_callback = auth_callback()(self.cache)
         self.log_callback = log_callback()
+        self.database_pool = database_pool
+        self._connection = None
+
+    @property
+    def database(self):
+        if self._connection is None:
+            self._connection = self.database_pool.getconn()
+            self._database = PostgresUserDatabase(self._connection)
+        return self._database
 
     async def prepare(self):
         self._start_time = perf_counter()
@@ -123,14 +137,8 @@ class FileHandler(RequestHandler):
             self.send_error(403, reason="No authorization given")
             return False
 
-        try:
-            user_id = self.cache.get_auth(self.auth_header)
-        except KeyError:
-            user_id = await self.auth_callback(self.auth_header)
-            self.cache.set_auth(self.auth_header, user_id)
-            mon.COUNT_AUTH_CACHE_SETS.inc()
-        else:
-            mon.COUNT_AUTH_CACHE_HITS.inc()
+        user = await self.auth_callback.auth(self.auth_header)
+        # TODO
 
         authorized = True
 
@@ -201,6 +209,8 @@ class FileHandler(RequestHandler):
 
     def finish(self, chunk=None):
         super().finish(chunk)
+        if self._connection is not None:
+            self.database_pool.putconn(self._connection)
         mon.REQ_IN_PROGRESS.dec()
         mon.REQ_RESPONSE.observe(perf_counter() - self._start_time)
 
@@ -231,7 +241,7 @@ def main():
         IOLoop.current().start()
 
 
-def make_app(cache_cls=None, log_callback=None, debug=False):
+def make_app(cache_cls=None, log_callback=None, database_pool=None, debug=False):
     if options.dummy and not debug:
         raise RuntimeError("Dummy backend is only allowed in debug mode")
 
@@ -241,9 +251,9 @@ def make_app(cache_cls=None, log_callback=None, debug=False):
                 return True
             return noauth
         if options.dummy_auth:
-            return auth.DummyAuth.auth
+            return auth.DummyAuth
         else:
-            return auth.AccountingServerAuth.auth
+            return auth.Auth
 
     if cache_cls is None:
         def cache_cls():
@@ -259,12 +269,16 @@ def make_app(cache_cls=None, log_callback=None, debug=False):
     def get_transfer_cls():
         return DummyTransfer if options.dummy else S3Transfer
 
+    if database_pool is None:
+        database_pool = SimpleConnectionPool(1, 20, dsn=options.psql_dsn),
+
     application = Application([
         (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[/\d\w-]+)', FileHandler, dict(
             transfer_cls=get_transfer_cls,
             auth_callback=get_auth_func,
             log_callback=log_callback,
             cache_cls=cache_cls,
+            database_pool=database_pool,
             concurrent_transfers=options.transfers,
         ))
     ], debug=debug)

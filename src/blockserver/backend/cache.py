@@ -1,8 +1,8 @@
+import redis
 from typing import Dict, List
 
 from abc import abstractmethod, ABC
-
-import redis
+from blockserver.backend.util import User
 from blockserver.backend.transfer import StorageObject, file_key
 
 AUTH_CACHE_EXPIRE = 60
@@ -38,16 +38,19 @@ class AbstractCache(ABC):
         size = int(size)
         return storage_object._replace(etag=etag, size=size)
 
-    def set_auth(self, authentication_token: str, value: int):
-        if not isinstance(value, int):
-            raise ValueError('Need an integer value')
-        self._set_single(authentication_token, str(value).encode('utf-8'), AUTH_CACHE_EXPIRE)
+    def set_auth(self, authentication_token: str, user: User):
+        if not isinstance(user, User):
+            raise ValueError('Need a User object')
+        self._set(authentication_token, user_id=str(user.user_id).encode('utf-8'),
+                  is_active=str(int(user.is_active)).encode('utf-8'))
+        self._set_expire(authentication_token, AUTH_CACHE_EXPIRE)
 
     def get_auth(self, authentication_token: str) -> int:
-        user_id = self._get_single(authentication_token)
+        user_info = self._get(authentication_token, 'user_id', 'is_active')
+        user_id, is_active = user_info
         if user_id is None:
             raise KeyError('Element not found')
-        return int(user_id)
+        return User(user_id=int(user_id.decode('utf-8')), is_active=(is_active == b'1'))
 
     def _storage_key(self, storage_object):
         return self.STORAGE_PREFIX + file_key(storage_object)
@@ -64,11 +67,7 @@ class AbstractCache(ABC):
         pass
 
     @abstractmethod
-    def _set_single(self, key, param, time_to_live):
-        pass
-
-    @abstractmethod
-    def _get_single(self, key):
+    def _set_expire(self, key, time_to_live):
         pass
 
 
@@ -92,11 +91,8 @@ class DummyCache(AbstractCache):
         else:
             return [values[k] for k in keys]
 
-    def _set_single(self, key, param, time_to_live):
-        self._cache[key] = param
-
-    def _get_single(self, key):
-        return self._cache[key]
+    def _set_expire(self, key, time_to_live):
+        pass
 
     def flush(self):
         self._cache = {}
@@ -107,14 +103,11 @@ class RedisCache(AbstractCache):
     Cache ETags from StorageObjects in redis
     """
 
-    def _set_single(self, key, param, time_to_live):
-        self._cache.setex(key, time_to_live, param)
-
-    def _get_single(self, key):
-        return self._cache.get(key)
-
     def __init__(self, host, port):
         self._cache = redis.StrictRedis(host=host, port=port)
+
+    def _set_expire(self, key, time_to_live):
+        self._cache.expire(key, time_to_live)
 
     def flush(self):
         self._cache.flushdb()
