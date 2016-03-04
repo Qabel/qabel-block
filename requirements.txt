@@ -9,3 +9,5 @@ prometheus_client==0.0.13
 wrapt==1.10.6
 asyncio==3.4.3
 psycopg2==2.6.1
+pytest-dbfixtures==0.13.1
+pytest-mock==0.11.0
