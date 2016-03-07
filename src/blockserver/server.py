@@ -51,32 +51,7 @@ define('logging_config',
 logger = logging.getLogger(__name__)
 
 
-@stream_request_body
-class FileHandler(RequestHandler):
-    auth = None
-    streamer = None
-
-    def initialize(self,
-                   transfer_cls=None,
-                   get_auth_class=None,
-                   get_cache_class=None,
-                   database_pool=None,
-                   concurrent_transfers: int=10):
-        """
-        :param database_pool: Postgresql database pool
-        :param transfer_cls: A function that returns a Transfer class
-        :param auth_callback: A function that returns a callback used for authorization
-        :param log_callback: A function that returns a callback used to log an action
-        :param cache_cls: A funciton that returns a Cache class
-        :param concurrent_transfers: Size of the thread pool used for transfers
-        :return:
-        """
-        self._thread_pool = concurrent.futures.ThreadPoolExecutor(options.transfers)
-        self.cache = get_cache_class()()  # type: cache.AbstractCache
-        self.transfer = transfer_cls()(cache=self.cache)
-        self.auth_callback = get_auth_class()(self.cache)
-        self.database_pool = database_pool
-        self._connection = None
+class DatabaseMixin:
 
     @property
     def database(self):
@@ -84,6 +59,30 @@ class FileHandler(RequestHandler):
             self._connection = self.database_pool.getconn()
             self._database = PostgresUserDatabase(self._connection)
         return self._database
+
+
+# noinspection PyMethodOverriding
+@stream_request_body
+class FileHandler(RequestHandler, DatabaseMixin):
+    auth = None
+    streamer = None
+
+    def initialize(self, transfer_cls, get_auth_cls, get_cache_class, database_pool,
+                   concurrent_transfers: int=10):
+        """
+        :param get_cache_class: A funciton that returns a Cache class
+        :param get_auth_cls: A function that returns a callback used for authorization
+        :param database_pool: Postgresql database pool
+        :param transfer_cls: A function that returns a Transfer class
+        :param concurrent_transfers: Size of the thread pool used for transfers
+        :return:
+        """
+        self._thread_pool = concurrent.futures.ThreadPoolExecutor(options.transfers)
+        self.cache = get_cache_class()()  # type: cache.AbstractCache
+        self.transfer = transfer_cls()(cache=self.cache)
+        self.auth_callback = get_auth_cls()(self.cache)
+        self.database_pool = database_pool
+        self._connection = None
 
     async def prepare(self):
         self._start_time = perf_counter()
@@ -196,6 +195,57 @@ class FileHandler(RequestHandler):
             self.database.update_size(prefix, size)
 
 
+# noinspection PyMethodOverriding
+class PrefixHandler(RequestHandler, DatabaseMixin):
+    def data_received(self, chunk):
+        pass
+
+    def initialize(self, get_auth_cls, get_cache_cls, database_pool):
+        self.cache = get_cache_cls()()
+        self.database_pool = database_pool
+        self._connection = None
+        self.auth_callback = get_auth_cls()(self.cache)
+
+    async def prepare(self):
+        self.authorized = False
+        auth_header = self.request.headers.get('Authorization', None)
+        if auth_header is None:
+            self.send_error(403, reason="No authorization given")
+            return
+        try:
+            user = await self.auth_callback.auth(auth_header)
+        except auth.UserNotFound:
+            self.send_error(403, reason="User not found")
+            return
+        self.authorized = True
+        self.user = user
+
+    def finish(self, chunk=None):
+        super().finish(chunk)
+        if self._connection is not None:
+            self.database_pool.putconn(self._connection)
+
+    @gen.coroutine
+    def get(self):
+        if not self.authorized:
+            self.finish()
+            return
+        self.set_status(200)
+        prefixes = self.database.get_prefixes(self.user.user_id)
+        self.write(json.dumps({'prefixes': prefixes}))
+        self.finish()
+
+    @gen.coroutine
+    def post(self):
+        if not self.authorized:
+            self.finish()
+            return
+        self.set_status(201)
+        new_prefix = self.database.create_prefix(self.user.user_id)
+        self.write(json.dumps({'prefix': new_prefix}))
+        self.finish()
+
+
 def main():
     application = make_app(debug=options.debug)
 
@@ -248,10 +298,15 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
     application = Application([
         (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[/\d\w-]+)', FileHandler, dict(
             transfer_cls=get_transfer_cls,
-            get_auth_class=get_auth_class,
-            get_cache_class=cache_cls,
+            get_auth_cls=get_auth_class,
+            get_cache_cls=cache_cls,
             database_pool=database_pool,
             concurrent_transfers=options.transfers,
+        )),
+        (r'^/api/v0/prefix/', PrefixHandler, dict(
+            get_cache_cls=cache_cls,
+            get_auth_cls=get_auth_class,
+            database_pool=database_pool,
         ))
     ], debug=debug)
     return application

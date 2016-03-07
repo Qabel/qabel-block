@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from tornado.options import options
 from glinda.testing import services
@@ -109,13 +111,38 @@ def test_no_long_path(backend, http_client, path, headers):
 
 
 @pytest.mark.gen_test
-def test_create_prefixes():
-    pytest.skip('Not implemented')
+def test_prefix_auth(app, http_client, prefix_path, user_id, pg_db, auth_server, auth_path):
+    auth_server.add_response(services.Request('POST', auth_path),
+                             services.Response(404))
+    response = yield http_client.fetch(prefix_path, method='POST', raise_error=False,
+                                       allow_nonstandard_methods=True)
+    assert response.code == 403
+    response = yield http_client.fetch(prefix_path, method='POST', raise_error=False,
+                                       headers={'Authorization': 'Token Foobar'},
+                                       allow_nonstandard_methods=True)
+    assert response.code == 403
 
 
 @pytest.mark.gen_test
-def test_get_prefixes():
-    pytest.skip('Not implemented')
+def test_create_prefixes(app, http_client, prefix_path, user_id, headers, pg_db):
+    response = yield http_client.fetch(prefix_path, method='POST', headers=headers,
+                                       allow_nonstandard_methods=True)
+    prefixes = pg_db.get_prefixes(user_id)
+    parsed_response = json.loads(response.body.decode('utf-8'))
+    assert parsed_response == {'prefix': prefixes[0]}
+
+
+@pytest.mark.gen_test
+def test_get_prefixes(app, http_client, prefix_path, user_id, headers, pg_db):
+    pg_db.create_prefix(user_id)
+    pg_db.create_prefix(user_id)
+    pg_db.create_prefix(user_id)
+    response = yield http_client.fetch(prefix_path, method='GET', headers=headers,
+                                       allow_nonstandard_methods=True)
+    prefixes = pg_db.get_prefixes(user_id)
+    parsed_response = json.loads(response.body.decode('utf-8'))
+    assert parsed_response == {'prefixes': prefixes}
+
 
 @pytest.mark.gen_test
 def test_save_log(app, mocker, http_client, path, auth_path, headers,

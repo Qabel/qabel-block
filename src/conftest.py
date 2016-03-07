@@ -59,6 +59,10 @@ def file_path(prefix):
 
 
 @pytest.fixture
+def prefix_path(base_url):
+    return base_url + '/api/v0/prefix/'
+
+@pytest.fixture
 def auth_path():
     return '/api/v0/auth/'
 
