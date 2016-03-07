@@ -60,13 +60,16 @@ class PostgresUserDatabase(AbstractUserDatabase):
 
     SCHEMA = """
     CREATE TABLE users (
-    id integer PRIMARY  KEY,
+    user_id INTEGER PRIMARY KEY,
     max_quota integer DEFAULT {0},
     download_traffic bigint DEFAULT 0,
-    size bigint DEFAULT 0,
-    prefixes CHARACTER(36)[]
+    size bigint DEFAULT 0
     );
-    CREATE INDEX prefix_idx ON users USING GIN (prefixes);
+    CREATE TABLE prefixes (
+    name VARCHAR(36) PRIMARY KEY,
+    user_id INTEGER NOT NULL
+    );
+    CREATE INDEX prefix_idx ON prefixes (user_id);
     """.format(AbstractUserDatabase.DEFAULT_QUOTA)
 
     def __init__(self, connection: psycopg2.extensions.connection):
@@ -91,22 +94,22 @@ class PostgresUserDatabase(AbstractUserDatabase):
 
     def drop_db(self):
         with self._cur() as cur:
-            cur.execute('DROP TABLE IF EXISTS users, version')
+            cur.execute('DROP TABLE IF EXISTS users, version, prefixes')
 
     def create_prefix(self, user_id: int) -> str:
         self.assert_user_exists(user_id)
         with self._cur() as cur:
             prefix = str(uuid4())
             cur.execute(
-                'UPDATE users SET prefixes = prefixes || %s::CHARACTER(36) WHERE id=%s',
-                (prefix, user_id))
+                'INSERT INTO prefixes (user_id, name) VALUES(%s, %s)',
+                (user_id, prefix))
             return prefix
 
     def assert_user_exists(self, user_id):
         with self._cur() as cur:
             try:
                 cur.execute(
-                        'INSERT INTO users (id) VALUES (%s)',
+                        'INSERT INTO users (user_id) VALUES (%s)',
                         (user_id,))
             except psycopg2.IntegrityError:
                 pass
@@ -114,32 +117,29 @@ class PostgresUserDatabase(AbstractUserDatabase):
     def has_prefix(self, user_id: int, prefix: str) -> bool:
         with self._cur() as cur:
             cur.execute(
-                'SELECT 1 FROM users WHERE id=%s AND ARRAY[%s::CHARACTER(36)] <@ prefixes',
+                'SELECT 1 FROM prefixes WHERE user_id=%s AND name=%s',
                 (user_id, prefix))
             return cur.rowcount == 1
 
     def get_prefixes(self, user_id: int) -> List[str]:
         with self._cur() as cur:
             cur.execute(
-                'SELECT prefixes FROM users WHERE id=%s',
+                'SELECT name FROM prefixes WHERE user_id=%s',
                 (user_id,))
-            result = cur.fetchone()
-            if result is None:
-                return []
-            else:
-                return result[0]
+            result = cur.fetchall()
+            return [row[0] for row in result]
 
     def update_size(self, prefix: str, change: int):
         with self._cur() as cur:
             cur.execute(
-                'UPDATE users SET size = size + %s '
-                'WHERE ARRAY[%s::CHARACTER(36)] <@ prefixes',
+                'UPDATE users u SET size = u.size + %s FROM prefixes p '
+                'WHERE p.name=%s AND u.user_id = p.user_id',
                 (change, prefix))
 
     def get_size(self, user_id: int) -> int:
         with self._cur() as cur:
             cur.execute(
-                'SELECT size FROM users WHERE id = %s',
+                'SELECT size FROM users WHERE user_id = %s',
                 (user_id,))
             result = cur.fetchone()
             if result is None:
@@ -150,12 +150,14 @@ class PostgresUserDatabase(AbstractUserDatabase):
     def update_traffic(self, prefix: str, amount: int):
         with self._cur() as cur:
             cur.execute(
-                'UPDATE users SET download_traffic = download_traffic + %s'
-                'WHERE ARRAY[%s::CHARACTER(36)] <@ prefixes', (amount, prefix))
+                'UPDATE users u SET download_traffic = download_traffic + %s '
+                'FROM prefixes p '
+                'WHERE p.name=%s AND u.user_id = p.user_id',
+                (amount, prefix))
 
     def get_traffic(self, user_id: int) -> int:
         with self._cur() as cur:
-            cur.execute('SELECT download_traffic FROM users WHERE id = %s', (user_id,))
+            cur.execute('SELECT download_traffic FROM users WHERE user_id = %s', (user_id,))
             traffic, = cur.fetchone()
             if traffic is None:
                 traffic = 0

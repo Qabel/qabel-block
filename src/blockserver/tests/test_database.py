@@ -13,7 +13,7 @@ def test_default_quota():
 def test_create_prefix(pg_db: PostgresUserDatabase):
     prefix = pg_db.create_prefix(UID)
     assert pg_db.has_prefix(UID, prefix)
-    another_prefix = uuid.uuid4()
+    another_prefix = str(uuid.uuid4())
     assert not pg_db.has_prefix(UID, another_prefix)
     second_prefix = pg_db.create_prefix(UID)
     assert pg_db.has_prefix(UID, second_prefix)
