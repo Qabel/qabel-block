@@ -293,7 +293,7 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
         return DummyTransfer if options.dummy else S3Transfer
 
     if database_pool is None:
-        database_pool = SimpleConnectionPool(1, 20, dsn=options.psql_dsn),
+        database_pool = SimpleConnectionPool(1, 20, dsn=options.psql_dsn)
 
     application = Application([
         (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[/\d\w-]+)', FileHandler, dict(
