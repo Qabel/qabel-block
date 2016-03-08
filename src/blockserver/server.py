@@ -2,7 +2,6 @@ import json
 import logging
 import logging.config
 from time import perf_counter
-from typing import Callable
 from prometheus_client import start_http_server
 
 import tempfile
@@ -11,12 +10,13 @@ import tornado.httpserver
 from functools import partial
 from tornado import concurrent
 from tornado import gen
-from tornado.httpclient import AsyncHTTPClient
 from tornado.options import define, options
 from tornado.web import Application, RequestHandler, stream_request_body
 
-from blockserver.backend import cache
-from blockserver.backend.transfer import AbstractTransfer, StorageObject, S3Transfer, DummyTransfer
+from blockserver.backend import cache, auth
+from blockserver.backend.transfer import StorageObject, S3Transfer, DummyTransfer
+from blockserver.backend.database import PostgresUserDatabase
+from psycopg2.pool import SimpleConnectionPool
 from blockserver import monitoring as mon
 
 define('debug', help="Enable debug output for tornado", default=False)
@@ -25,7 +25,8 @@ define('transfers', help="Thread pool size for transfers", default=10)
 define('port', help="Port of this server", default=8888)
 define('address', help="Address of this server", default="localhost")
 define('apisecret', help="API_SECRET of the accounting server", default='secret')
-define('noauth', help="Disable authentication", default=False)
+define('psql_dsn', help="libq connection string for postgresql",
+        default='postgresql://postgres:postgres@localhost/qabel-block')
 define('dummy_auth',
        help="Authenticate with this authentication token [Example: MAGICFARYDUST] "
             "for the prefix 'test'", default=None, type=str)
@@ -49,70 +50,38 @@ define('logging_config',
 logger = logging.getLogger(__name__)
 
 
-@mon.time(mon.WAIT_FOR_AUTH)
-async def check_auth(auth, prefix, file_path, action):
-    http_client = AsyncHTTPClient()
-    url = options.accounting_host + '/api/v0/auth/' + prefix + '/' + file_path
-    response = await http_client.fetch(
-        url, method=action, headers={'Authorization': auth, 'APISECRET': options.apisecret},
-        body=b'' if action == 'POST' else None, raise_error=False,
-    )
-    return response.code == 204
+class DatabaseMixin:
+
+    @property
+    def database(self):
+        if self._connection is None:
+            self._connection = self.database_pool.getconn()
+            self._database = PostgresUserDatabase(self._connection)
+        return self._database
 
 
-async def dummy_auth(auth, prefix, file_path, action):
-    return auth == 'Token ' + options.dummy_auth and prefix == 'test'
-
-
-async def console_log(auth, storage_object: StorageObject, action: str, size: int):
-    print("{prefix} / {file_path} {action} {size}".format(
-        prefix=storage_object.prefix,
-        file_path=storage_object.file_path,
-        action=action,
-        size=size
-    ))
-
-
-@mon.time(mon.WAIT_FOR_QUOTA)
-async def send_log(auth, storage_object: StorageObject, action: str, size: int):
-    http_client = AsyncHTTPClient()
-    url = options.accounting_host + '/api/v0/quota/'
-    payload = {'prefix': storage_object.prefix, 'file_path': storage_object.file_path,
-               'action': action, 'size': size}
-    response = await http_client.fetch(url, method='POST',
-                            headers={'Authorization': auth,
-                                     'APISECRET': options.apisecret,
-                                     'Content-Type': 'application/json'},
-                            body=json.dumps(payload), raise_error=False)
-    if response.code >= 300:
-        mon.COUNT_QUOTA_ERROR.inc()
-        logger.error('Could not send log: {}'.format(response.body))
-
-
+# noinspection PyMethodOverriding
 @stream_request_body
-class FileHandler(RequestHandler):
+class FileHandler(RequestHandler, DatabaseMixin):
     auth = None
     streamer = None
 
-    def initialize(self,
-                   transfer_cls: Callable[[], Callable[[], AbstractTransfer]]=None,
-                   auth_callback: Callable[[], Callable[[str, str, str, str], bool]]=None,
-                   log_callback: Callable[[], Callable[[StorageObject, str, int], None]]=None,
-                   cache_cls: Callable[[], Callable[[], cache.AbstractCache]]=None,
+    def initialize(self, transfer_cls, get_auth_cls, get_cache_class, database_pool,
                    concurrent_transfers: int=10):
         """
+        :param get_cache_class: A funciton that returns a Cache class
+        :param get_auth_cls: A function that returns a callback used for authorization
+        :param database_pool: Postgresql database pool
         :param transfer_cls: A function that returns a Transfer class
-        :param auth_callback: A function that returns a callback used for authorization
-        :param log_callback: A function that returns a callback used to log an action
-        :param cache_cls: A funciton that returns a Cache class
         :param concurrent_transfers: Size of the thread pool used for transfers
         :return:
         """
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(options.transfers)
-        self.cache = cache_cls()()  # type: cache.AbstractCache
+        self.cache = get_cache_class()()  # type: cache.AbstractCache
         self.transfer = transfer_cls()(cache=self.cache)
-        self.auth_callback = auth_callback()
-        self.log_callback = log_callback()
+        self.auth_callback = get_auth_cls()(self.cache)
+        self.database_pool = database_pool
+        self._connection = None
 
     async def prepare(self):
         self._start_time = perf_counter()
@@ -129,27 +98,24 @@ class FileHandler(RequestHandler):
     async def _authorize_request(self):
         try:
             prefix = self.path_kwargs['prefix']
-            file_path = self.path_kwargs['file_path']
         except KeyError:
-            self.send_error(403, reason="No correct prefix given")
+            self.send_error(400, reason="No correct prefix given")
             return False
 
-        self.auth_header = self.request.headers.get('Authorization', None)
-        if self.auth_header is None:
-            self.send_error(403, reason="No authorization given")
-            return False
+        if self.request.method == 'GET':
+            return True
+        else:
+            auth_header = self.request.headers.get('Authorization', None)
+            if auth_header is None:
+                self.send_error(403, reason="No authorization given")
+                return False
 
         try:
-            authorized = self.cache.get_auth(
-                self.auth_header, prefix, self.request.method)
-        except KeyError:
-            authorized = await self.auth_callback(
-                self.auth_header, prefix, file_path, self.request.method)
-            self.cache.set_auth(
-                self.auth_header, prefix, self.request.method, authorized)
-            mon.COUNT_AUTH_CACHE_SETS.inc()
+            user = await self.auth_callback.auth(auth_header)
+        except auth.UserNotFound:
+            authorized = False
         else:
-            mon.COUNT_AUTH_CACHE_HITS.inc()
+            authorized = self.database.has_prefix(user.user_id, prefix)
 
         if not authorized:
             self.send_error(403, reason="Not authorized for this prefix")
@@ -178,7 +144,7 @@ class FileHandler(RequestHandler):
                     self.write(chunk)
                 size = f_in.tell()
             mon.TRAFFIC_RESPONSE.inc(size)
-            yield self.log_callback(self.auth_header, storage_object, 'get', size)
+            self.save_traffic_log(prefix, size)
         self.finish()
 
     @gen.coroutine
@@ -188,9 +154,7 @@ class FileHandler(RequestHandler):
                 prefix, file_path, self.temp.name)
         self.temp.close()
         mon.TRAFFIC_REQUEST.inc(storage_object.size)
-        yield self.log_callback(self.auth_header,
-                                StorageObject(prefix, file_path, None, None),
-                                'store', size_diff)
+        self.save_size_log(prefix, size_diff)
         self.set_status(204)
         self.set_header('ETag', storage_object.etag)
         self.finish()
@@ -198,9 +162,7 @@ class FileHandler(RequestHandler):
     @gen.coroutine
     def delete(self, prefix, file_path):
         size = yield self.delete_file(prefix, file_path)
-        yield self.log_callback(self.auth_header,
-                                StorageObject(prefix, file_path, None, None),
-                                'store', -size)
+        self.save_size_log(prefix, -size)
         self.set_status(204)
         self.finish()
 
@@ -218,8 +180,69 @@ class FileHandler(RequestHandler):
 
     def finish(self, chunk=None):
         super().finish(chunk)
+        if self._connection is not None:
+            self.database_pool.putconn(self._connection)
         mon.REQ_IN_PROGRESS.dec()
         mon.REQ_RESPONSE.observe(perf_counter() - self._start_time)
+
+    def save_traffic_log(self, prefix, traffic):
+        if traffic > 0:
+            self.database.update_traffic(prefix, traffic)
+
+    def save_size_log(self, prefix, size):
+        if size != 0:
+            self.database.update_size(prefix, size)
+
+
+# noinspection PyMethodOverriding
+class PrefixHandler(RequestHandler, DatabaseMixin):
+    def data_received(self, chunk):
+        pass
+
+    def initialize(self, get_auth_cls, get_cache_cls, database_pool):
+        self.cache = get_cache_cls()()
+        self.database_pool = database_pool
+        self._connection = None
+        self.auth_callback = get_auth_cls()(self.cache)
+
+    async def prepare(self):
+        self.authorized = False
+        auth_header = self.request.headers.get('Authorization', None)
+        if auth_header is None:
+            self.send_error(403, reason="No authorization given")
+            return
+        try:
+            user = await self.auth_callback.auth(auth_header)
+        except auth.UserNotFound:
+            self.send_error(403, reason="User not found")
+            return
+        self.authorized = True
+        self.user = user
+
+    def finish(self, chunk=None):
+        super().finish(chunk)
+        if self._connection is not None:
+            self.database_pool.putconn(self._connection)
+
+    @gen.coroutine
+    def get(self):
+        if not self.authorized:
+            self.finish()
+            return
+        self.set_status(200)
+        prefixes = self.database.get_prefixes(self.user.user_id)
+        self.write(json.dumps({'prefixes': prefixes}))
+        self.finish()
+
+    @gen.coroutine
+    def post(self):
+        if not self.authorized:
+            self.finish()
+            return
+        self.set_status(201)
+        new_prefix = self.database.create_prefix(self.user.user_id)
+        self.write(json.dumps({'prefix': new_prefix}))
+        self.finish()
 
 
 def main():
@@ -248,19 +271,15 @@ def main():
         IOLoop.current().start()
 
 
-def make_app(cache_cls=None, log_callback=None, debug=False):
+def make_app(cache_cls=None, database_pool=None, debug=False):
     if options.dummy and not debug:
         raise RuntimeError("Dummy backend is only allowed in debug mode")
 
-    def get_auth_func():
-        if options.noauth:
-            async def noauth(*args):
-                return True
-            return noauth
+    def get_auth_class():
         if options.dummy_auth:
-            return dummy_auth
+            return auth.DummyAuth
         else:
-            return check_auth
+            return auth.Auth
 
     if cache_cls is None:
         def cache_cls():
@@ -269,20 +288,24 @@ def make_app(cache_cls=None, log_callback=None, debug=False):
             else:
                 return partial(cache.RedisCache, host=options.redis_host, port=options.redis_port)
 
-    if log_callback is None:
-        def log_callback():
-            return console_log if options.dummy_log else send_log
-
     def get_transfer_cls():
         return DummyTransfer if options.dummy else S3Transfer
+
+    if database_pool is None:
+        database_pool = SimpleConnectionPool(1, 20, dsn=options.psql_dsn)
 
     application = Application([
         (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[/\d\w-]+)', FileHandler, dict(
             transfer_cls=get_transfer_cls,
-            auth_callback=get_auth_func,
-            log_callback=log_callback,
-            cache_cls=cache_cls,
+            get_auth_cls=get_auth_class,
+            get_cache_cls=cache_cls,
+            database_pool=database_pool,
             concurrent_transfers=options.transfers,
+        )),
+        (r'^/api/v0/prefix/', PrefixHandler, dict(
+            get_cache_cls=cache_cls,
+            get_auth_cls=get_auth_class,
+            database_pool=database_pool,
         ))
     ], debug=debug)
     return application
