@@ -4,6 +4,7 @@ This server handles uploads, downloads and deletes on the storage backend for Qa
 
 Installation:
 
+	cd src
 	virtualenv ../venv --python=python3.5
 	source ../venv/bin/activate
 	pip install -r ../requirements.txt
