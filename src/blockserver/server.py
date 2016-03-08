@@ -10,7 +10,6 @@ import tornado.httpserver
 from functools import partial
 from tornado import concurrent
 from tornado import gen
-from tornado.httpclient import AsyncHTTPClient
 from tornado.options import define, options
 from tornado.web import Application, RequestHandler, stream_request_body
 
