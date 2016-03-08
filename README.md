@@ -9,3 +9,7 @@ Installation:
 	pip install -r requirements.txt
 	python run.py
 
+
+The server needs a postgresql database that needs to me initialized by
+
+    python manage.py initdb --psql-dsn "postgresql://username:password@localhost/dbname"
