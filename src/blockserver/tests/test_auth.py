@@ -138,3 +138,16 @@ def test_auth_returns_inactive_user_object(app, http_client, auth_server):
     user = yield auth.AccountingServerAuth.request('foobar')
     assert user.user_id == 0
     assert not user.is_active
+
+
+@pytest.mark.gen_test
+def test_content_type_header_set(app, http_client, auth_server):
+    path = '/api/v0/auth/'
+    body = b'{"user_id": 0}'
+    auth_server.add_response(services.Request('POST', path),
+                             services.Response(200, body=body))
+    response = yield auth.AccountingServerAuth.send_request('foobar')
+    assert response.code == 200
+    request = auth_server.get_request(path)
+    assert request.headers['Content-Type'] == 'application/json'
+

@@ -64,7 +64,8 @@ class AccountingServerAuth:
         url = AccountingServerAuth.auth_url()
         try:
             return await http_client.fetch(
-                url, headers={'APISECRET': AccountingServerAuth.api_secret()},
+                url, headers={'APISECRET': AccountingServerAuth.api_secret(),
+                                'Content-Type': 'application/json'},
                 body=request_body, method='POST')
         except HTTPError as e:
             if e.code == 404:
