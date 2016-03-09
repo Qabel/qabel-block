@@ -66,7 +66,7 @@ class FileHandler(RequestHandler, DatabaseMixin):
     auth = None
     streamer = None
 
-    def initialize(self, transfer_cls, get_auth_cls, get_cache_class, database_pool,
+    def initialize(self, transfer_cls, get_auth_cls, get_cache_cls, database_pool,
                    concurrent_transfers: int=10):
         """
         :param get_cache_class: A funciton that returns a Cache class
@@ -77,7 +77,7 @@ class FileHandler(RequestHandler, DatabaseMixin):
         :return:
         """
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(options.transfers)
-        self.cache = get_cache_class()()  # type: cache.AbstractCache
+        self.cache = get_cache_cls()()  # type: cache.AbstractCache
         self.transfer = transfer_cls()(cache=self.cache)
         self.auth_callback = get_auth_cls()(self.cache)
         self.database_pool = database_pool
@@ -114,6 +114,8 @@ class FileHandler(RequestHandler, DatabaseMixin):
             user = await self.auth_callback.auth(auth_header)
         except auth.UserNotFound:
             authorized = False
+        except auth.BypassAuth:
+            return True
         else:
             authorized = self.database.has_prefix(user.user_id, prefix)
 
@@ -216,6 +218,8 @@ class PrefixHandler(RequestHandler, DatabaseMixin):
         except auth.UserNotFound:
             self.send_error(403, reason="User not found")
             return
+        except auth.BypassAuth as e:
+            user = e.user
         self.authorized = True
         self.user = user
 

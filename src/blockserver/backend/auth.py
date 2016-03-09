@@ -15,13 +15,22 @@ class UserNotFound(AuthError):
     pass
 
 
+class BypassAuth(AuthError):
+
+    def __init__(self, user):
+        self.user = user
+
+
 class DummyAuth:
 
     def __init__(self, cache_backend):
         pass
 
     async def auth(self, auth_header: str) -> int:
-        return User(user_id=0, is_active=True)
+        if auth_header == 'Token {}'.format(options.dummy_auth):
+            raise BypassAuth(User(user_id=0, is_active=True))
+        else:
+            raise UserNotFound()
 
 
 class Auth:

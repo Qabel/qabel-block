@@ -1,4 +1,5 @@
 from unittest.mock import Mock, sentinel
+from tornado.options import options
 
 import pytest
 from glinda.testing import services
@@ -6,17 +7,18 @@ from pytest import fixture
 
 from blockserver.backend import auth
 from blockserver.backend.auth import DummyAuth, Auth
-from blockserver.backend.util import User
 from conftest import make_coroutine
 
 
 @pytest.mark.gen_test
 def test_dummy_auth():
     cache = Mock()
-    user = User(user_id=0, is_active=True)
-    assert (yield DummyAuth(cache).auth("Token RandomStuff")) == user
-    assert (yield DummyAuth(cache).auth("Foobar")) == user
-    assert (yield DummyAuth(cache).auth(None)) == user
+    with pytest.raises(auth.BypassAuth):
+        yield DummyAuth(cache).auth("Token {}".format(options.dummy_auth))
+    with pytest.raises(auth.UserNotFound):
+        yield DummyAuth(cache).auth("Foobar")
+    with pytest.raises(auth.UserNotFound):
+        yield DummyAuth(cache).auth(None)
 
 
 @fixture

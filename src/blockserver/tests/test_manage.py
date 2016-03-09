@@ -3,8 +3,8 @@ import manage
 
 def test_args(mocker):
     dsn = "foobar"
-    initdb = mocker.patch('blockserver.manage.initdb')
-    dropdb = mocker.patch('blockserver.manage.dropdb')
+    initdb = mocker.patch('manage.initdb')
+    dropdb = mocker.patch('manage.dropdb')
     arguments = ['initdb', '--psql-dsn', dsn]
     manage.main(arguments)
     initdb.assert_called_with(dsn)
