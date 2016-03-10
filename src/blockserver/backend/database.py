@@ -139,13 +139,13 @@ class PostgresUserDatabase(AbstractUserDatabase):
     def get_size(self, user_id: int) -> int:
         with self._cur() as cur:
             cur.execute(
-                'SELECT size FROM users WHERE user_id = %s',
+                'SELECT max_quota, size FROM users WHERE user_id = %s',
                 (user_id,))
             result = cur.fetchone()
             if result is None:
-                return 0
+                return self.DEFAULT_QUOTA, 0
             else:
-                return result[0]
+                return result
 
     def update_traffic(self, prefix: str, amount: int):
         with self._cur() as cur:

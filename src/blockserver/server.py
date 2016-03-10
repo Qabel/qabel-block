@@ -59,6 +59,10 @@ class DatabaseMixin:
             self._database = PostgresUserDatabase(self._connection)
         return self._database
 
+    def finish(self, chunk=None):
+        if self._connection is not None:
+            self.database_pool.putconn(self._connection)
+
 
 # noinspection PyMethodOverriding
 @stream_request_body
@@ -196,16 +200,7 @@ class FileHandler(RequestHandler, DatabaseMixin):
             self.database.update_size(prefix, size)
 
 
-# noinspection PyMethodOverriding
-class PrefixHandler(RequestHandler, DatabaseMixin):
-    def data_received(self, chunk):
-        pass
-
-    def initialize(self, get_auth_cls, get_cache_cls, database_pool):
-        self.cache = get_cache_cls()()
-        self.database_pool = database_pool
-        self._connection = None
-        self.auth_callback = get_auth_cls()(self.cache)
+class AuthorizationMixin:
 
     async def prepare(self):
         self.authorized = False
@@ -223,10 +218,23 @@ class PrefixHandler(RequestHandler, DatabaseMixin):
         self.authorized = True
         self.user = user
 
+
+# noinspection PyMethodOverriding
+class PrefixHandler(AuthorizationMixin, RequestHandler, DatabaseMixin):
+    def data_received(self, chunk):
+        pass
+
+    def initialize(self, get_auth_cls, get_cache_cls, database_pool):
+        self.cache = get_cache_cls()()
+        self.database_pool = database_pool
+        self._connection = None
+        self.auth_callback = get_auth_cls()(self.cache)
+
+    async def prepare(self):
+        await super().prepare()
+
     def finish(self, chunk=None):
         super().finish(chunk)
-        if self._connection is not None:
-            self.database_pool.putconn(self._connection)
 
     @gen.coroutine
     def get(self):
@@ -246,6 +254,34 @@ class PrefixHandler(RequestHandler, DatabaseMixin):
         self.set_status(201)
         new_prefix = self.database.create_prefix(self.user.user_id)
         self.write(json.dumps({'prefix': new_prefix}))
+        self.finish()
+
+
+# noinspection PyMethodOverriding
+class QuotaHandler(AuthorizationMixin, RequestHandler, DatabaseMixin):
+    def data_received(self, chunk):
+        pass
+
+    def initialize(self, get_auth_cls, get_cache_cls, database_pool):
+        self.cache = get_cache_cls()()
+        self.database_pool = database_pool
+        self._connection = None
+        self.auth_callback = get_auth_cls()(self.cache)
+
+    async def prepare(self):
+        await super().prepare()
+
+    def finish(self, chunk=None):
+        super().finish(chunk)
+
+    @gen.coroutine
+    def get(self):
+        if not self.authorized:
+            self.finish()
+            return
+        self.set_status(200)
+        quota, size = self.database.get_size(self.user.user_id)
+        self.write(json.dumps({'quota': quota, 'size': size}))
         self.finish()
 
 
@@ -307,6 +343,11 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
             concurrent_transfers=options.transfers,
         )),
         (r'^/api/v0/prefix/', PrefixHandler, dict(
+            get_cache_cls=cache_cls,
+            get_auth_cls=get_auth_class,
+            database_pool=database_pool,
+        )),
+        (r'^/api/v0/quota/', QuotaHandler, dict(
             get_cache_cls=cache_cls,
             get_auth_cls=get_auth_class,
             database_pool=database_pool,

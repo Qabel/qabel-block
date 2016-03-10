@@ -167,3 +167,32 @@ def test_save_log(app, mocker, http_client, path, auth_path, headers,
     expected_traffic = [call(prefix, size)]
     assert trafifc_log.call_args_list == expected_traffic
 
+
+@pytest.mark.gen_test
+def test_normal_cycle_with_quota_changes(backend, http_client, path, quota_path, headers):
+    size = 0
+    async def check_quota():
+        response = await http_client.fetch(quota_path, method='GET', headers=headers)
+        data = json.loads(response.body.decode('utf-8'))
+        assert data['size'] == size
+    yield check_quota()
+    body = b'Dummy'
+    response = yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    assert response.code == 204
+    size += len(body)
+    yield check_quota()
+    response = yield http_client.fetch(path, method='GET', headers=headers)
+    assert response.body == body
+    assert int(response.headers['Content-Length']) == len(body)
+    yield check_quota()
+    response = yield http_client.fetch(path, method='DELETE', headers=headers)
+    assert response.code == 204
+    size = 0
+    yield check_quota()
+    # deleting again works fine
+    response = yield http_client.fetch(path, method='DELETE', headers=headers)
+    assert response.code == 204
+    yield check_quota()
+    response = yield http_client.fetch(path, method='GET', headers=headers, raise_error=False)
+    assert response.code == 404
+    yield check_quota()

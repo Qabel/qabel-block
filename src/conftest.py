@@ -72,6 +72,11 @@ def path(base_url, file_path):
     return base_url + '/api/v0/files' + file_path
 
 
+@pytest.fixture
+def quota_path(base_url):
+    return base_url + '/api/v0/quota/'
+
+
 @pytest.yield_fixture
 def backend(request, cache):
     switch_to = (request.param == 'dummy')
