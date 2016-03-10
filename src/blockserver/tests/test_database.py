@@ -50,20 +50,20 @@ def test_used_space_inc(pg_db, user_id, prefix):
     size = 500
     second_prefix = pg_db.create_prefix(user_id)
     pg_db.update_size(prefix, size)
-    assert pg_db.get_size(user_id) == size
+    assert pg_db.get_size(user_id)[1] == size
 
     pg_db.update_size(second_prefix, size)
-    assert pg_db.get_size(user_id) == size * 2
+    assert pg_db.get_size(user_id)[1]  == size * 2
 
 
 def test_used_space_dec(pg_db, user_id, prefix):
     size = 500
     second_prefix = pg_db.create_prefix(user_id)
     pg_db.update_size(prefix, size)
-    assert pg_db.get_size(user_id) == size
+    assert pg_db.get_size(user_id)[1] == size
 
     pg_db.update_size(second_prefix, -size)
-    assert pg_db.get_size(user_id) == 0
+    assert pg_db.get_size(user_id)[1] == 0
 
 
 def test_traffic_for_prefix(pg_db, user_id, prefix):
