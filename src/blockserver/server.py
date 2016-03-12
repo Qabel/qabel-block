@@ -1,3 +1,4 @@
+import psycopg2
 import json
 import logging
 import logging.config
@@ -55,11 +56,16 @@ class DatabaseMixin:
     @property
     def database(self):
         if self._connection is None:
-            self._connection = self.database_pool.getconn()
+            try:
+                self._connection = self.database_pool.getconn()
+            except psycopg2.pool.PoolError:
+                logger.error('Could not get a database connection. Closing all connections.')
+                self.database_pool.closeall()
+                self._connection = self.database_pool.getconn()
             self._database = PostgresUserDatabase(self._connection)
         return self._database
 
-    def finish(self, chunk=None):
+    def finish_database(self):
         if self._connection is not None:
             self.database_pool.putconn(self._connection)
 
@@ -235,6 +241,7 @@ class PrefixHandler(AuthorizationMixin, RequestHandler, DatabaseMixin):
 
     def finish(self, chunk=None):
         super().finish(chunk)
+        self.finish_database()
 
     @gen.coroutine
     def get(self):
@@ -273,6 +280,7 @@ class QuotaHandler(AuthorizationMixin, RequestHandler, DatabaseMixin):
 
     def finish(self, chunk=None):
         super().finish(chunk)
+        self.finish_database()
 
     @gen.coroutine
     def get(self):
@@ -332,7 +340,7 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
         return DummyTransfer if options.dummy else S3Transfer
 
     if database_pool is None:
-        database_pool = SimpleConnectionPool(1, 20, dsn=options.psql_dsn)
+        database_pool = SimpleConnectionPool(1, 20000, dsn=options.psql_dsn)
 
     application = Application([
         (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[/\d\w-]+)', FileHandler, dict(
