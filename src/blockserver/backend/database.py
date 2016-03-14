@@ -114,6 +114,28 @@ class PostgresUserDatabase(AbstractUserDatabase):
                 traffic = 0
             return traffic
 
+    def set_quota(self, user_id: int, quota: int):
+        with self._cur() as cur:
+            cur.execute(
+                'UPDATE users u SET max_quota = %s '
+                'WHERE u.user_id = %s',
+                (quota, user_id))
+            if cur.rowcount < 1:
+                self.assert_user_exists(user_id)
+                self.set_quota(user_id, quota)
+
+    def get_quota(self, user_id: int) -> int:
+        with self._cur() as cur:
+            cur.execute('SELECT max_quota FROM users WHERE user_id = %s', (user_id,))
+            result = cur.fetchone()
+            if result is None:
+                self.assert_user_exists(user_id)
+                return self.get_quota(user_id)
+            traffic, = result
+            if traffic is None:
+                traffic = 0
+            return traffic
+
     def _flush_all(self):
         with self._cur() as cur:
             cur.execute('DELETE FROM users')

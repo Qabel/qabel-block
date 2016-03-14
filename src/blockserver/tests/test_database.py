@@ -61,3 +61,14 @@ def test_traffic_for_prefix(pg_db, user_id, prefix):
     amount = 500
     pg_db.update_traffic(prefix, amount)
     assert pg_db.get_traffic(user_id) == amount
+
+
+def test_quota(pg_db, user_id):
+    assert pg_db.get_quota(user_id) == 2*1024**3
+    pg_db.set_quota(user_id, 10)
+    assert pg_db.get_quota(user_id) == 10
+
+
+def test_set_quota(pg_db, user_id):
+    pg_db.set_quota(user_id, 10)
+    assert pg_db.get_quota(user_id) == 10
