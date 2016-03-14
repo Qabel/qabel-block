@@ -136,6 +136,17 @@ class PostgresUserDatabase(AbstractUserDatabase):
                 traffic = 0
             return traffic
 
+    def quota_reached(self, user_id: int) -> bool:
+        with self._cur() as cur:
+            cur.execute('SELECT size >= max_quota FROM users WHERE user_id = %s',
+                        (user_id,))
+            result = cur.fetchone()
+            if result is None:
+                self.assert_user_exists(user_id)
+                return self.quota_reached(user_id)
+            reached, = result
+            return reached
+
     def _flush_all(self):
         with self._cur() as cur:
             cur.execute('DELETE FROM users')

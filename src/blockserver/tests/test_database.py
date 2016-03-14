@@ -72,3 +72,11 @@ def test_quota(pg_db, user_id):
 def test_set_quota(pg_db, user_id):
     pg_db.set_quota(user_id, 10)
     assert pg_db.get_quota(user_id) == 10
+
+
+def test_quota_reached(pg_db, user_id, prefix):
+    assert not pg_db.quota_reached(user_id)
+    pg_db.set_quota(user_id, 10)
+    assert not pg_db.quota_reached(user_id)
+    pg_db.update_size(prefix, 10)
+    assert pg_db.quota_reached(user_id)
