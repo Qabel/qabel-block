@@ -3,8 +3,6 @@ import psycopg2
 import psycopg2.extensions
 from abc import abstractmethod, ABC
 from uuid import uuid4
-import psycopg2.extras
-psycopg2.extras.register_uuid()
 from contextlib import contextmanager
 
 
