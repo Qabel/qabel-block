@@ -10,8 +10,6 @@ from contextlib import contextmanager
 
 class AbstractUserDatabase(ABC):
 
-    DEFAULT_QUOTA = 2*1024*1024*8
-
     @abstractmethod
     def init_db(self):
         pass
@@ -51,27 +49,6 @@ class AbstractUserDatabase(ABC):
 
 class PostgresUserDatabase(AbstractUserDatabase):
 
-    VERSION = 1
-
-    BASE_SCHEMA = """
-    CREATE TABLE IF NOT EXISTS version (
-    id integer PRIMARY KEY
-    )"""
-
-    SCHEMA = """
-    CREATE TABLE users (
-    user_id INTEGER PRIMARY KEY,
-    max_quota integer DEFAULT {0},
-    download_traffic bigint DEFAULT 0,
-    size bigint DEFAULT 0
-    );
-    CREATE TABLE prefixes (
-    name VARCHAR(36) PRIMARY KEY,
-    user_id INTEGER NOT NULL
-    );
-    CREATE INDEX prefix_idx ON prefixes (user_id);
-    """.format(AbstractUserDatabase.DEFAULT_QUOTA)
-
     def __init__(self, connection: psycopg2.extensions.connection):
         self.connection = connection
 
@@ -79,22 +56,6 @@ class PostgresUserDatabase(AbstractUserDatabase):
     def _cur(self):
         with self.connection:
             yield self.connection.cursor()  # type: psycopg2.extensions.cursor
-
-    def init_db(self):
-        with self.connection:
-            cur = self.connection.cursor()
-            cur.execute(self.BASE_SCHEMA)
-            cur.execute('SELECT MAX(id) FROM version')
-            result = cur.fetchone()
-            version = result[0]
-            if version is None:
-                version = 0
-            if self.VERSION > version:
-                self._migrate(cur, result[0], self.VERSION)
-
-    def drop_db(self):
-        with self._cur() as cur:
-            cur.execute('DROP TABLE IF EXISTS users, version, prefixes')
 
     def create_prefix(self, user_id: int) -> str:
         self.assert_user_exists(user_id)

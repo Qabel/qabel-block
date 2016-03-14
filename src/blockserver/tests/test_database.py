@@ -5,11 +5,6 @@ import uuid
 UID = 1
 
 
-def test_default_quota():
-    assert AbstractUserDatabase.DEFAULT_QUOTA > 0
-    assert str(AbstractUserDatabase.DEFAULT_QUOTA) in PostgresUserDatabase.SCHEMA
-
-
 def test_create_prefix(pg_db: PostgresUserDatabase):
     prefix = pg_db.create_prefix(UID)
     assert pg_db.has_prefix(UID, prefix)
@@ -39,11 +34,6 @@ def test_retrieve_prefixes(pg_db):
 
 def test_nonexistent_prefixes(pg_db):
     assert pg_db.get_prefixes(UID) == []
-
-
-def test_idempotent_init_db(pg_db):
-    pg_db.init_db()
-    pg_db.init_db()
 
 
 def test_used_space_inc(pg_db, user_id, prefix):
