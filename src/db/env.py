@@ -2,6 +2,7 @@ from __future__ import with_statement
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 from logging.config import fileConfig
+import os
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -54,11 +55,13 @@ def run_migrations_online():
 
     # if a database path was provided, override the one in alembic.ini
     db_path = context.get_x_argument(as_dictionary=True).get('url')
-    if db_path:
-        ini_section['sqlalchemy.url'] = db_path
-    else:
-        raise ValueError('You need to provide a database url: '
-                         '-x url=postgresql://postgres:postgres@localhost/qabel-block')
+    if not db_path:
+        db_path = os.environ.get('BLOCK_DATABASE_URI', None)
+        if db_path is None:
+            if not ini_section.get('sqlalchemy.url', None):
+                raise ValueError('You need to provide a database url: '
+                                 '-x url=postgresql://postgres:postgres@localhost/qabel-block')
+    ini_section['sqlalchemy.url'] = db_path
 
     connectable = engine_from_config(
         ini_section,

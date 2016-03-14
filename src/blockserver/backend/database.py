@@ -11,14 +11,6 @@ from contextlib import contextmanager
 class AbstractUserDatabase(ABC):
 
     @abstractmethod
-    def init_db(self):
-        pass
-
-    @abstractmethod
-    def drop_db(self):
-        pass
-
-    @abstractmethod
     def create_prefix(self, user_id: int) -> str:
         pass
 
@@ -124,7 +116,8 @@ class PostgresUserDatabase(AbstractUserDatabase):
                 traffic = 0
             return traffic
 
-    def _migrate(self, cur, from_version, to_version):
-        cur.execute(self.SCHEMA)
-        cur.execute('INSERT INTO version (id) VALUES (%s)', (to_version,))
+    def _flush_all(self):
+        with self._cur() as cur:
+            cur.execute('DELETE FROM users')
+            cur.execute('DELETE FROM prefixes')
 
