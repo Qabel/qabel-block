@@ -196,3 +196,29 @@ def test_normal_cycle_with_quota_changes(backend, http_client, path, quota_path,
     response = yield http_client.fetch(path, method='GET', headers=headers, raise_error=False)
     assert response.code == 404
     yield check_quota()
+
+
+@pytest.mark.gen_test
+def test_quota_reached(backend, http_client, block_path, headers, pg_db, user_id):
+    pg_db.set_quota(user_id, 0)
+    body = b'Dummy'
+    response = yield http_client.fetch(block_path, method='POST', body=body, headers=headers)
+    assert response.code == 402
+    assert response.body == 'Quota reached'
+
+
+@pytest.mark.gen_test
+def test_quota_reached_but_meta_files_allowed(backend, http_client, path, headers, pg_db, user_id):
+    pg_db.set_quota(user_id, 0)
+    body = b'Dummy'
+    response = yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    assert response.code == 204
+
+
+@pytest.mark.gen_test
+def test_quota_reached_meta_files_size_limit(backend, http_client, path, headers, pg_db, user_id):
+    assert False
+
+@pytest.mark.gen_test
+def test_quota_delete_and_download(backend, http_client, path, headers, pg_db, user_id):
+    assert False
