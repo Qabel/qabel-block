@@ -83,3 +83,10 @@ def test_quota_reached(pg_db, user_id, prefix):
     pg_db.update_size(prefix, 10)
     assert pg_db.quota_reached(user_id, 0)
     assert pg_db.quota_reached(user_id, size)
+
+
+def test_traffic_by_prefix(pg_db, prefix):
+    assert pg_db.get_traffic_by_prefix(prefix) == 0
+    amount = 500
+    pg_db.update_traffic(prefix, amount)
+    assert pg_db.get_traffic_by_prefix(prefix) == amount

@@ -19,6 +19,7 @@ from blockserver.backend.transfer import StorageObject, S3Transfer, DummyTransfe
 from blockserver.backend.database import PostgresUserDatabase
 from psycopg2.pool import SimpleConnectionPool
 from blockserver import monitoring as mon
+from blockserver.backend.quota import QuotaPolicy
 
 define('debug', help="Enable debug output for tornado", default=False)
 define('asyncio', help="Run on the asyncio loop instead of the tornado IOLoop", default=False)
@@ -113,7 +114,7 @@ class FileHandler(RequestHandler, DatabaseMixin):
             return False
 
         if self.request.method == 'GET':
-            return True
+            return self._check_download_traffic(prefix)
         else:
             auth_header = self.request.headers.get('Authorization', None)
             if auth_header is None:
@@ -132,6 +133,17 @@ class FileHandler(RequestHandler, DatabaseMixin):
         if not authorized:
             self.send_error(403, reason="Not authorized for this prefix")
         return authorized
+
+    def _check_download_traffic(self, prefix):
+        current_traffic = self.database.get_traffic_by_prefix(prefix)
+        if QuotaPolicy.download(current_traffic):
+            return True
+        else:
+            self._quota_error()
+            return False
+
+    def _quota_error(self):
+        self.send_error(402, reason="Quota reached")
 
     async def data_received(self, chunk):
         if not self.auth:
