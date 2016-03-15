@@ -217,9 +217,21 @@ def test_quota_reached_but_meta_files_allowed(backend, http_client, path, header
 
 @pytest.mark.gen_test
 def test_quota_reached_meta_files_size_limit(backend, http_client, path, headers, pg_db, user_id):
-    assert False
+    pg_db.set_quota(user_id, 0)
+    body = b'+' * 151 * 1024
+    response = yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    assert response.code == 402
+    assert response.body == 'Quota reached'
 
 
 @pytest.mark.gen_test
 def test_quota_delete_and_download(backend, http_client, path, headers, pg_db, user_id):
-    assert False
+    pg_db.update_traffic(user_id, 100*1024**3)
+    body = b'Dummy'
+    response = yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    assert response.code == 204
+    response = yield http_client.fetch(path, method='GET', headers=headers)
+    assert response.code == 402
+    assert response.body == 'Quota reached'
+    response = yield http_client.fetch(path, method='DELETE', headers=headers)
+    assert response.code == 204

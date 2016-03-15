@@ -136,10 +136,10 @@ class PostgresUserDatabase(AbstractUserDatabase):
                 traffic = 0
             return traffic
 
-    def quota_reached(self, user_id: int) -> bool:
+    def quota_reached(self, user_id: int, file_size: int) -> bool:
         with self._cur() as cur:
-            cur.execute('SELECT size >= max_quota FROM users WHERE user_id = %s',
-                        (user_id,))
+            cur.execute('SELECT (size+%s) >= max_quota FROM users WHERE user_id = %s',
+                        (file_size, user_id,))
             result = cur.fetchone()
             if result is None:
                 self.assert_user_exists(user_id)
