@@ -13,4 +13,4 @@ Installation:
 
 The server needs a postgresql database that needs to me initialized by
 
-    python manage.py initdb --psql-dsn "postgresql://username:password@localhost/dbname"
+	alembic -x "url=postgresql://username:password@localhost/dbname" upgrade head
