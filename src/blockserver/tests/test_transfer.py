@@ -53,3 +53,11 @@ def test_get_size(testfile, cache, transfer):
     uploaded_size = t.get_size(StorageObject('foo', 'bar'))
     assert size == uploaded_size
     assert uploaded.size == size
+
+
+def test_get_size_does_not_corrupt_cache(cache, transfer, testfile):
+    storage_object = StorageObject('foo', 'baz', local_file=testfile)
+    transfer.store(storage_object)
+    cache.flush()
+    transfer.get_size(StorageObject('foo', 'baz'))
+
