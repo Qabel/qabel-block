@@ -39,6 +39,10 @@ class AbstractTransfer(ABC):
         self.cache.set_storage(storage_object)
 
     @abstractmethod
+    def get_size(self, storage_object: StorageObject) -> int:
+        pass
+
+    @abstractmethod
     def store(self, storage_object: StorageObject) -> Tuple[StorageObject, int]:
         pass
 
@@ -56,6 +60,18 @@ class S3Transfer(AbstractTransfer):
         super().__init__(cache)
         self.s3 = boto3.resource('s3')
 
+    def get_size(self, storage_object: StorageObject) -> int:
+        try:
+            cached = self._from_cache(storage_object)
+        except KeyError:
+            with mon.SUMMARY_S3_REQUESTS.time():
+                obj = self.s3.Object(BUCKET, file_key(storage_object))
+                etag, size = self._get_meta_info(obj)
+                if etag is not None:
+                    self._to_cache(storage_object._replace(size=size, etag=etag))
+        else:
+            return cached.size
+
     @mon.TIME_IN_TRANSFER_STORE.time()
     def store(self, storage_object: StorageObject):
         obj = self.s3.Object(BUCKET, file_key(storage_object))
@@ -63,7 +79,7 @@ class S3Transfer(AbstractTransfer):
             cached = self._from_cache(storage_object)
         except KeyError:
             with mon.SUMMARY_S3_REQUESTS.time():
-                size = self.get_size(obj)
+                _, size = self._get_meta_info(obj)
         else:
             size = cached.size
 
@@ -77,13 +93,13 @@ class S3Transfer(AbstractTransfer):
             self._to_cache(new_object)
             return new_object, size_diff
 
-    def get_size(self, obj):
+    def _get_meta_info(self, obj):
         try:
-            return obj.content_length
+            return obj.e_tag, obj.content_length
         except ClientError as e:
             status = e.response['ResponseMetadata']['HTTPStatusCode']
             if status == 404:
-                return 0
+                return None, 0
             else:
                 raise
 
@@ -120,7 +136,7 @@ class S3Transfer(AbstractTransfer):
     def delete(self, storage_object):
         obj = self.s3.Object(BUCKET, file_key(storage_object))
         with mon.SUMMARY_S3_REQUESTS.time():
-            size = self.get_size(obj)
+            _, size = self._get_meta_info(obj)
         with mon.SUMMARY_S3_REQUESTS.time():
             obj.delete()
         return size
@@ -135,18 +151,23 @@ class DummyTransfer(AbstractTransfer):
         super().__init__(cache)
         self._tempdir = tempfile.mkdtemp()
 
-    def store(self, storage_object: StorageObject) -> Tuple[StorageObject, int]:
-        old_size = 0
+    def get_size(self, storage_object: StorageObject) -> int:
         try:
             cached = self._from_cache(storage_object)
         except KeyError:
             try:
-                old_size = os.path.getsize(
-                        files[file_key(storage_object)].local_file)
+                size = os.path.getsize(
+                    files[file_key(storage_object)].local_file)
+                return size
             except KeyError:
-                pass
+                return None
         else:
-            old_size = cached.size
+            return cached.size
+
+    def store(self, storage_object: StorageObject) -> Tuple[StorageObject, int]:
+        old_size = self.get_size(storage_object)
+        if old_size is None:
+            old_size = 0
         new_size = os.path.getsize(storage_object.local_file)
         new_path = os.path.join(self._tempdir, file_key(storage_object))
         dirname = os.path.dirname(new_path)

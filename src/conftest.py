@@ -5,6 +5,7 @@ import random
 import string
 import blockserver.backend.cache as cache_backends
 import blockserver.server
+from blockserver.backend import quota
 from blockserver.backend import transfer as transfer_module
 from pytest_dbfixtures.factories.postgresql import init_postgresql_database
 from pytest_dbfixtures.utils import try_import
@@ -14,6 +15,17 @@ from tornado.options import options
 
 from blockserver.backend.database import PostgresUserDatabase
 
+from alembic.command import upgrade
+from alembic.config import Config
+
+BASEDIR = os.path.abspath(os.path.dirname(__file__))
+ALEMBIC_CONFIG = os.path.join(BASEDIR, 'alembic.ini')
+
+transfer_module.BUCKET = 'qabelbox'
+
+@pytest.fixture
+def quota_policy():
+    return quota.QuotaPolicy
 
 @pytest.fixture
 def auth_token():
@@ -29,7 +41,7 @@ def headers(auth_token):
 def testfile():
     with tempfile.NamedTemporaryFile(delete=False) as temp:
         temp.write(b'Dummy\n')
-        yield temp.name
+    yield temp.name
     os.remove(temp.name)
 
 
@@ -66,6 +78,9 @@ def prefix_path(base_url):
 def auth_path():
     return '/api/v0/auth/'
 
+@pytest.fixture
+def block_path(base_url, file_path):
+    return base_url + '/api/v0/files/block' + file_path
 
 @pytest.fixture
 def path(base_url, file_path):
@@ -101,6 +116,16 @@ def cache(request):
     return cache_object
 
 
+def apply_migrations(user, host, port, db):
+    os.chdir(BASEDIR)
+    config = Config(ALEMBIC_CONFIG)
+
+    url = "postgresql://{}@{}:{}/{}".format(
+        user, host, port, db)
+    os.environ['BLOCK_DATABASE_URI'] = url
+    upgrade(config, 'head')
+
+
 @pytest.fixture(scope='session')
 def pg_connection(request, postgresql_proc):
     psycopg2, config = try_import('psycopg2', request)
@@ -111,6 +136,7 @@ def pg_connection(request, postgresql_proc):
     init_postgresql_database(
             psycopg2, config.postgresql.user, pg_host, pg_port, pg_db
     )
+    apply_migrations(config.postgresql.user, pg_host, pg_port, pg_db)
     conn = psycopg2.connect(
             dbname=pg_db,
             user=config.postgresql.user,
@@ -135,8 +161,7 @@ def pg_pool(pg_connection):
 @pytest.fixture
 def pg_db(pg_connection):
     db = PostgresUserDatabase(pg_connection)
-    db.drop_db()
-    db.init_db()
+    db._flush_all()
     return db
 
 

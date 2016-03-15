@@ -3,22 +3,10 @@ import psycopg2
 import psycopg2.extensions
 from abc import abstractmethod, ABC
 from uuid import uuid4
-import psycopg2.extras
-psycopg2.extras.register_uuid()
 from contextlib import contextmanager
 
 
 class AbstractUserDatabase(ABC):
-
-    DEFAULT_QUOTA = 2*1024*1024*8
-
-    @abstractmethod
-    def init_db(self):
-        pass
-
-    @abstractmethod
-    def drop_db(self):
-        pass
 
     @abstractmethod
     def create_prefix(self, user_id: int) -> str:
@@ -51,27 +39,6 @@ class AbstractUserDatabase(ABC):
 
 class PostgresUserDatabase(AbstractUserDatabase):
 
-    VERSION = 1
-
-    BASE_SCHEMA = """
-    CREATE TABLE IF NOT EXISTS version (
-    id integer PRIMARY KEY
-    )"""
-
-    SCHEMA = """
-    CREATE TABLE users (
-    user_id INTEGER PRIMARY KEY,
-    max_quota integer DEFAULT {0},
-    download_traffic bigint DEFAULT 0,
-    size bigint DEFAULT 0
-    );
-    CREATE TABLE prefixes (
-    name VARCHAR(36) PRIMARY KEY,
-    user_id INTEGER NOT NULL
-    );
-    CREATE INDEX prefix_idx ON prefixes (user_id);
-    """.format(AbstractUserDatabase.DEFAULT_QUOTA)
-
     def __init__(self, connection: psycopg2.extensions.connection):
         self.connection = connection
 
@@ -79,22 +46,6 @@ class PostgresUserDatabase(AbstractUserDatabase):
     def _cur(self):
         with self.connection:
             yield self.connection.cursor()  # type: psycopg2.extensions.cursor
-
-    def init_db(self):
-        with self.connection:
-            cur = self.connection.cursor()
-            cur.execute(self.BASE_SCHEMA)
-            cur.execute('SELECT MAX(id) FROM version')
-            result = cur.fetchone()
-            version = result[0]
-            if version is None:
-                version = 0
-            if self.VERSION > version:
-                self._migrate(cur, result[0], self.VERSION)
-
-    def drop_db(self):
-        with self._cur() as cur:
-            cur.execute('DROP TABLE IF EXISTS users, version, prefixes')
 
     def create_prefix(self, user_id: int) -> str:
         self.assert_user_exists(user_id)
@@ -163,7 +114,50 @@ class PostgresUserDatabase(AbstractUserDatabase):
                 traffic = 0
             return traffic
 
-    def _migrate(self, cur, from_version, to_version):
-        cur.execute(self.SCHEMA)
-        cur.execute('INSERT INTO version (id) VALUES (%s)', (to_version,))
+    def get_traffic_by_prefix(self, prefix: str) -> int:
+        with self._cur() as cur:
+            cur.execute('SELECT download_traffic FROM users JOIN prefixes USING (user_id)'
+                        'WHERE name = %s', (prefix,))
+            traffic, = cur.fetchone()
+            if traffic is None:
+                traffic = 0
+            return traffic
+
+    def set_quota(self, user_id: int, quota: int):
+        with self._cur() as cur:
+            cur.execute(
+                'UPDATE users u SET max_quota = %s '
+                'WHERE u.user_id = %s',
+                (quota, user_id))
+            if cur.rowcount < 1:
+                self.assert_user_exists(user_id)
+                self.set_quota(user_id, quota)
+
+    def get_quota(self, user_id: int) -> int:
+        with self._cur() as cur:
+            cur.execute('SELECT max_quota FROM users WHERE user_id = %s', (user_id,))
+            result = cur.fetchone()
+            if result is None:
+                self.assert_user_exists(user_id)
+                return self.get_quota(user_id)
+            traffic, = result
+            if traffic is None:
+                traffic = 0
+            return traffic
+
+    def quota_reached(self, user_id: int, file_size: int) -> bool:
+        with self._cur() as cur:
+            cur.execute('SELECT (size+%s) >= max_quota FROM users WHERE user_id = %s',
+                        (file_size, user_id,))
+            result = cur.fetchone()
+            if result is None:
+                self.assert_user_exists(user_id)
+                return self.quota_reached(user_id)
+            reached, = result
+            return reached
+
+    def _flush_all(self):
+        with self._cur() as cur:
+            cur.execute('DELETE FROM users')
+            cur.execute('DELETE FROM prefixes')
 

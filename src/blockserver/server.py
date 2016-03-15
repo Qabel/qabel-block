@@ -19,6 +19,8 @@ from blockserver.backend.transfer import StorageObject, S3Transfer, DummyTransfe
 from blockserver.backend.database import PostgresUserDatabase
 from psycopg2.pool import SimpleConnectionPool
 from blockserver import monitoring as mon
+from blockserver.backend.quota import QuotaPolicy
+from blockserver.backend.util import User
 
 define('debug', help="Enable debug output for tornado", default=False)
 define('asyncio', help="Run on the asyncio loop instead of the tornado IOLoop", default=False)
@@ -113,7 +115,7 @@ class FileHandler(RequestHandler, DatabaseMixin):
             return False
 
         if self.request.method == 'GET':
-            return True
+            return self._check_download_traffic(prefix)
         else:
             auth_header = self.request.headers.get('Authorization', None)
             if auth_header is None:
@@ -121,17 +123,33 @@ class FileHandler(RequestHandler, DatabaseMixin):
                 return False
 
         try:
-            user = await self.auth_callback.auth(auth_header)
+            self.user = await self.auth_callback.auth(auth_header)
         except auth.UserNotFound:
             authorized = False
         except auth.BypassAuth:
+            self.user = User(user_id=0, is_active=True)
             return True
         else:
-            authorized = self.database.has_prefix(user.user_id, prefix)
+            authorized = self.database.has_prefix(self.user.user_id, prefix)
 
         if not authorized:
             self.send_error(403, reason="Not authorized for this prefix")
+            return authorized
+
+        if self.request.method == 'DELETE':
+            return QuotaPolicy.delete()
         return authorized
+
+    def _check_download_traffic(self, prefix):
+        current_traffic = self.database.get_traffic_by_prefix(prefix)
+        if QuotaPolicy.download(current_traffic):
+            return True
+        else:
+            self._quota_error()
+            return False
+
+    def _quota_error(self):
+        self.send_error(402, reason="Quota reached")
 
     async def data_received(self, chunk):
         if not self.auth:
@@ -161,6 +179,21 @@ class FileHandler(RequestHandler, DatabaseMixin):
 
     @gen.coroutine
     def post(self, prefix, file_path):
+        file_size = self.temp.tell()
+        quota_reached = self.database.quota_reached(self.user.user_id, file_size)
+        is_block = file_path.startswith('block/')
+        old_size = self.transfer.get_size(StorageObject(prefix, file_path))
+        if old_size is None:
+            is_overwrite = False
+            size_change = file_size
+        else:
+            is_overwrite = True
+            size_change = file_size - old_size
+        if not QuotaPolicy.upload(quota_reached, size_change, is_block, is_overwrite):
+            self._quota_error()
+            self.finish()
+            return
+
         self.temp.seek(0)
         storage_object, size_diff = yield self.store_file(
                 prefix, file_path, self.temp.name)
