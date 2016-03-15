@@ -5,8 +5,8 @@ class QuotaPolicy:
     TRAFFIC_THRESHOLD = 100 * 1024**3
 
     @staticmethod
-    def upload(quota, current_size, file_size, is_block, is_overwrite=False):
-        if current_size + file_size <= quota and file_size > 0:
+    def upload(quota_reached, file_size, is_block, is_overwrite=False):
+        if not quota_reached:
             return True
         if is_block:
             return False

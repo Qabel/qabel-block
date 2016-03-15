@@ -13,8 +13,9 @@ def test_not_found(backend, http_client, path):
 
 @pytest.mark.gen_test
 def test_no_body(backend, http_client, path, headers):
-    response = yield http_client.fetch(path, method='POST', body=b'', headers=headers)
-    assert response.code == 204
+    response = yield http_client.fetch(path, method='POST', body=b'', headers=headers,
+                                       raise_error=False)
+    assert response.code == 204, response.body.decode('utf-8')
 
 
 @pytest.mark.gen_test
@@ -202,15 +203,17 @@ def test_normal_cycle_with_quota_changes(backend, http_client, path, quota_path,
 def test_quota_reached(backend, http_client, block_path, headers, pg_db, user_id):
     pg_db.set_quota(user_id, 0)
     body = b'Dummy'
-    response = yield http_client.fetch(block_path, method='POST', body=body, headers=headers)
-    assert response.code == 402
+    response = yield http_client.fetch(block_path, method='POST', body=body,
+                                       headers=headers, raise_error=False)
+    assert response.code == 402, response.body.decode('utf-8')
     assert b'Quota reached' in response.body
 
 
 @pytest.mark.gen_test
 def test_quota_reached_but_meta_files_allowed(backend, http_client, path, headers, pg_db, user_id):
-    pg_db.set_quota(user_id, 0)
     body = b'Dummy'
+    yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    pg_db.set_quota(user_id, 0)
     response = yield http_client.fetch(path, method='POST', body=body, headers=headers)
     assert response.code == 204
 
@@ -219,7 +222,8 @@ def test_quota_reached_but_meta_files_allowed(backend, http_client, path, header
 def test_quota_reached_meta_files_size_limit(backend, http_client, path, headers, pg_db, user_id):
     pg_db.set_quota(user_id, 0)
     body = b'+' * 151 * 1024
-    response = yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    response = yield http_client.fetch(path, method='POST', body=body, headers=headers,
+                                       raise_error=False)
     assert response.code == 402
     assert b'Quota reached' in response.body
 

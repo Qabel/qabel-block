@@ -90,3 +90,8 @@ def test_traffic_by_prefix(pg_db, prefix):
     amount = 500
     pg_db.update_traffic(prefix, amount)
     assert pg_db.get_traffic_by_prefix(prefix) == amount
+
+
+def test_quota_reached_by_large_file(pg_db, user_id, prefix):
+    size = 3*1024**3
+    assert pg_db.quota_reached(user_id, size)

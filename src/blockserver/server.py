@@ -20,6 +20,7 @@ from blockserver.backend.database import PostgresUserDatabase
 from psycopg2.pool import SimpleConnectionPool
 from blockserver import monitoring as mon
 from blockserver.backend.quota import QuotaPolicy
+from blockserver.backend.util import User
 
 define('debug', help="Enable debug output for tornado", default=False)
 define('asyncio', help="Run on the asyncio loop instead of the tornado IOLoop", default=False)
@@ -122,16 +123,21 @@ class FileHandler(RequestHandler, DatabaseMixin):
                 return False
 
         try:
-            user = await self.auth_callback.auth(auth_header)
+            self.user = await self.auth_callback.auth(auth_header)
         except auth.UserNotFound:
             authorized = False
         except auth.BypassAuth:
+            self.user = User(user_id=0, is_active=True)
             return True
         else:
-            authorized = self.database.has_prefix(user.user_id, prefix)
+            authorized = self.database.has_prefix(self.user.user_id, prefix)
 
         if not authorized:
             self.send_error(403, reason="Not authorized for this prefix")
+            return authorized
+
+        if self.request.method == 'DELETE':
+            return QuotaPolicy.delete()
         return authorized
 
     def _check_download_traffic(self, prefix):
@@ -173,6 +179,21 @@ class FileHandler(RequestHandler, DatabaseMixin):
 
     @gen.coroutine
     def post(self, prefix, file_path):
+        file_size = self.temp.tell()
+        quota_reached = self.database.quota_reached(self.user.user_id, file_size)
+        is_block = file_path.startswith('block/')
+        old_size = self.transfer.get_size(StorageObject(prefix, file_path))
+        if old_size is None:
+            is_overwrite = False
+            size_change = file_size
+        else:
+            is_overwrite = True
+            size_change = file_size - old_size
+        if not QuotaPolicy.upload(quota_reached, size_change, is_block, is_overwrite):
+            self._quota_error()
+            self.finish()
+            return
+
         self.temp.seek(0)
         storage_object, size_diff = yield self.store_file(
                 prefix, file_path, self.temp.name)

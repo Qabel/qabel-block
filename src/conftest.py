@@ -40,7 +40,7 @@ def headers(auth_token):
 def testfile():
     with tempfile.NamedTemporaryFile(delete=False) as temp:
         temp.write(b'Dummy\n')
-        yield temp.name
+    yield temp.name
     os.remove(temp.name)
 
 
