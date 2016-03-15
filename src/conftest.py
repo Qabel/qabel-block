@@ -21,6 +21,7 @@ from alembic.config import Config
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 ALEMBIC_CONFIG = os.path.join(BASEDIR, 'alembic.ini')
 
+transfer_module.BUCKET = 'qabelbox'
 
 @pytest.fixture
 def quota_policy():
