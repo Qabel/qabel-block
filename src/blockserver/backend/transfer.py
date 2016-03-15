@@ -158,7 +158,6 @@ class DummyTransfer(AbstractTransfer):
             try:
                 size = os.path.getsize(
                     files[file_key(storage_object)].local_file)
-                self._to_cache(storage_object._replace(size=size))
                 return size
             except KeyError:
                 return None
