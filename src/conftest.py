@@ -5,6 +5,7 @@ import random
 import string
 import blockserver.backend.cache as cache_backends
 import blockserver.server
+from blockserver.backend import quota
 from blockserver.backend import transfer as transfer_module
 from pytest_dbfixtures.factories.postgresql import init_postgresql_database
 from pytest_dbfixtures.utils import try_import
@@ -20,6 +21,10 @@ from alembic.config import Config
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 ALEMBIC_CONFIG = os.path.join(BASEDIR, 'alembic.ini')
 
+
+@pytest.fixture
+def quota_policy():
+    return quota.QuotaPolicy
 
 @pytest.fixture
 def auth_token():

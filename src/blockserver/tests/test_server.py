@@ -219,6 +219,7 @@ def test_quota_reached_but_meta_files_allowed(backend, http_client, path, header
 def test_quota_reached_meta_files_size_limit(backend, http_client, path, headers, pg_db, user_id):
     assert False
 
+
 @pytest.mark.gen_test
 def test_quota_delete_and_download(backend, http_client, path, headers, pg_db, user_id):
     assert False

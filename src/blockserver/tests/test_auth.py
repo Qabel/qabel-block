@@ -152,4 +152,3 @@ def test_content_type_header_set(app, http_client, auth_server):
     assert response.code == 200
     request = auth_server.get_request(path)
     assert request.headers['Content-Type'] == 'application/json'
-
