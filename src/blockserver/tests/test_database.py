@@ -95,3 +95,7 @@ def test_traffic_by_prefix(pg_db, prefix):
 def test_quota_reached_by_large_file(pg_db, user_id, prefix):
     size = 3*1024**3
     assert pg_db.quota_reached(user_id, size)
+
+
+def test_traffic_default(pg_db):
+    assert pg_db.get_traffic_by_prefix("non existing prefix") == 0

@@ -239,3 +239,10 @@ def test_quota_delete_and_download(backend, http_client, prefix, path, headers, 
     assert b'Quota reached' in response.body
     response = yield http_client.fetch(path, method='DELETE', headers=headers)
     assert response.code == 204
+
+
+@pytest.mark.gen_test
+def test_get_before_post(backend, http_client, base_url):
+    url = base_url + '/api/v0/files/randomprefix/foobar'
+    response = yield http_client.fetch(url, method='GET', raise_error=False)
+    assert response.code == 404
