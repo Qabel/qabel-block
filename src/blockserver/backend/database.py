@@ -118,9 +118,11 @@ class PostgresUserDatabase(AbstractUserDatabase):
         with self._cur() as cur:
             cur.execute('SELECT download_traffic FROM users JOIN prefixes USING (user_id)'
                         'WHERE name = %s', (prefix,))
-            traffic, = cur.fetchone()
-            if traffic is None:
+            result = cur.fetchone()
+            if result is None:
                 traffic = 0
+            else:
+                traffic, = result
             return traffic
 
     def set_quota(self, user_id: int, quota: int):
