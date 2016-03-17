@@ -154,7 +154,7 @@ class PostgresUserDatabase(AbstractUserDatabase):
             result = cur.fetchone()
             if result is None:
                 self.assert_user_exists(user_id)
-                return self.quota_reached(user_id)
+                return self.quota_reached(user_id, file_size)
             reached, = result
             return reached
 

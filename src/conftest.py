@@ -79,8 +79,8 @@ def auth_path():
     return '/api/v0/auth/'
 
 @pytest.fixture
-def block_path(base_url, file_path):
-    return base_url + '/api/v0/files/block' + file_path
+def block_path(base_url, prefix):
+    return base_url + '/api/v0/files/{}/block/foobar'.format(prefix)
 
 @pytest.fixture
 def path(base_url, file_path):

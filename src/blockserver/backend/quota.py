@@ -16,6 +16,3 @@ class QuotaPolicy:
     def download(current_traffic):
         return current_traffic <= QuotaPolicy.TRAFFIC_THRESHOLD
 
-    @staticmethod
-    def delete():
-        return True

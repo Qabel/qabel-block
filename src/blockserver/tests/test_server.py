@@ -128,6 +128,7 @@ def test_prefix_auth(app, http_client, prefix_path, user_id, pg_db, auth_server,
 def test_create_prefixes(app, http_client, prefix_path, user_id, headers, pg_db):
     response = yield http_client.fetch(prefix_path, method='POST', headers=headers,
                                        allow_nonstandard_methods=True)
+    assert 'application/json' in response.headers['Content-Type']
     prefixes = pg_db.get_prefixes(user_id)
     parsed_response = json.loads(response.body.decode('utf-8'))
     assert parsed_response == {'prefix': prefixes[0]}
@@ -140,6 +141,7 @@ def test_get_prefixes(app, http_client, prefix_path, user_id, headers, pg_db):
     pg_db.create_prefix(user_id)
     response = yield http_client.fetch(prefix_path, method='GET', headers=headers,
                                        allow_nonstandard_methods=True)
+    assert 'application/json' in response.headers['Content-Type']
     prefixes = pg_db.get_prefixes(user_id)
     parsed_response = json.loads(response.body.decode('utf-8'))
     assert parsed_response == {'prefixes': prefixes}
@@ -174,6 +176,7 @@ def test_normal_cycle_with_quota_changes(backend, http_client, path, quota_path,
     size = 0
     async def check_quota():
         response = await http_client.fetch(quota_path, method='GET', headers=headers)
+        assert 'application/json' in response.headers['Content-Type']
         data = json.loads(response.body.decode('utf-8'))
         assert data['size'] == size
     yield check_quota()
@@ -200,12 +203,12 @@ def test_normal_cycle_with_quota_changes(backend, http_client, path, quota_path,
 
 
 @pytest.mark.gen_test
-def test_quota_reached(backend, http_client, block_path, headers, pg_db, user_id):
+def test_quota_reached_and_upload_denied(backend, http_client, block_path, headers, pg_db, user_id):
     pg_db.set_quota(user_id, 0)
     body = b'Dummy'
     response = yield http_client.fetch(block_path, method='POST', body=body,
                                        headers=headers, raise_error=False)
-    assert response.code == 402, response.body.decode('utf-8')
+    assert response.code == 402
     assert b'Quota reached' in response.body
 
 
@@ -246,3 +249,11 @@ def test_get_before_post(backend, http_client, base_url):
     url = base_url + '/api/v0/files/randomprefix/foobar'
     response = yield http_client.fetch(url, method='GET', raise_error=False)
     assert response.code == 404
+
+
+@pytest.mark.gen_test
+def test_database_finish_called(backend, http_client, base_url, mocker):
+    finish_db = mocker.patch('blockserver.server.DatabaseMixin.finish_database')
+    url = base_url + '/api/v0/files/randomprefix/foobar'
+    yield http_client.fetch(url, method='GET', raise_error=False)
+    finish_db.assert_called_with()
