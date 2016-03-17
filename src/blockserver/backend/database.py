@@ -94,7 +94,8 @@ class PostgresUserDatabase(AbstractUserDatabase):
                 (user_id,))
             result = cur.fetchone()
             if result is None:
-                return self.DEFAULT_QUOTA, 0
+                self.assert_user_exists(user_id)
+                return self.get_size(user_id)
             else:
                 return result
 

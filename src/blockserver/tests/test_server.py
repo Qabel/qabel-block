@@ -268,8 +268,9 @@ def test_database_finish_called_in_prefix(backend, http_client, base_url, mocker
 
 
 @pytest.mark.gen_test
-def test_database_finish_called_in_quota(backend, http_client, base_url, mocker):
+def test_database_finish_called_in_quota(backend, http_client, headers, base_url, mocker):
     finish_db = mocker.patch('blockserver.server.DatabaseMixin.finish_database')
     url = base_url + '/api/v0/quota/'
-    yield http_client.fetch(url, method='GET')
+    response = yield http_client.fetch(url, method='GET', headers=headers, raise_error=True)
+    assert response.code == 200, response.body.decode('utf-8')
     finish_db.assert_called_with()
