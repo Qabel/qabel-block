@@ -66,14 +66,17 @@ class DatabaseMixin:
             self._database = PostgresUserDatabase(self._connection)
         return self._database
 
-    def on_finish(self):
+    def finish_database(self):
         if self._connection is not None:
             self.database_pool.putconn(self._connection)
+
+    def on_finish(self):
+        self.finish_database()
 
 
 # noinspection PyMethodOverriding
 @stream_request_body
-class FileHandler(RequestHandler, DatabaseMixin):
+class FileHandler(DatabaseMixin, RequestHandler):
     auth = None
     streamer = None
 
@@ -242,7 +245,7 @@ class AuthorizationMixin:
 
 
 # noinspection PyMethodOverriding,PyAbstractClass
-class PrefixHandler(AuthorizationMixin, RequestHandler, DatabaseMixin):
+class PrefixHandler(AuthorizationMixin, DatabaseMixin, RequestHandler):
 
     def initialize(self, get_auth_cls, get_cache_cls, database_pool):
         self.cache = get_cache_cls()()
@@ -266,7 +269,7 @@ class PrefixHandler(AuthorizationMixin, RequestHandler, DatabaseMixin):
 
 
 # noinspection PyMethodOverriding,PyAbstractClass
-class QuotaHandler(AuthorizationMixin, RequestHandler, DatabaseMixin):
+class QuotaHandler(AuthorizationMixin, DatabaseMixin, RequestHandler):
 
     def initialize(self, get_auth_cls, get_cache_cls, database_pool):
         self.cache = get_cache_cls()()
@@ -329,7 +332,7 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
         return DummyTransfer if options.dummy else S3Transfer
 
     if database_pool is None:
-        database_pool = SimpleConnectionPool(1, 20000, dsn=options.psql_dsn)
+        database_pool = SimpleConnectionPool(1, 2000, dsn=options.psql_dsn)
 
     application = Application([
         (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[/\d\w-]+)', FileHandler, dict(

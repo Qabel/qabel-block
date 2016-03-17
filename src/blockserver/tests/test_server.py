@@ -252,8 +252,24 @@ def test_get_before_post(backend, http_client, base_url):
 
 
 @pytest.mark.gen_test
-def test_database_finish_called(backend, http_client, base_url, mocker):
+def test_database_finish_called_in_files(backend, http_client, base_url, mocker):
     finish_db = mocker.patch('blockserver.server.DatabaseMixin.finish_database')
     url = base_url + '/api/v0/files/randomprefix/foobar'
     yield http_client.fetch(url, method='GET', raise_error=False)
+    finish_db.assert_called_with()
+
+
+@pytest.mark.gen_test
+def test_database_finish_called_in_prefix(backend, http_client, base_url, mocker, headers):
+    finish_db = mocker.patch('blockserver.server.DatabaseMixin.finish_database')
+    url = base_url + '/api/v0/prefix/'
+    yield http_client.fetch(url, method='GET', headers=headers)
+    finish_db.assert_called_with()
+
+
+@pytest.mark.gen_test
+def test_database_finish_called_in_quota(backend, http_client, base_url, mocker):
+    finish_db = mocker.patch('blockserver.server.DatabaseMixin.finish_database')
+    url = base_url + '/api/v0/quota/'
+    yield http_client.fetch(url, method='GET')
     finish_db.assert_called_with()
