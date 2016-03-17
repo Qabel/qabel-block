@@ -20,7 +20,6 @@ from blockserver.backend.database import PostgresUserDatabase
 from psycopg2.pool import SimpleConnectionPool
 from blockserver import monitoring as mon
 from blockserver.backend.quota import QuotaPolicy
-from blockserver.backend.util import User
 
 define('debug', help="Enable debug output for tornado", default=False)
 define('asyncio', help="Run on the asyncio loop instead of the tornado IOLoop", default=False)
@@ -67,7 +66,7 @@ class DatabaseMixin:
             self._database = PostgresUserDatabase(self._connection)
         return self._database
 
-    def finish_database(self):
+    def on_finish(self):
         if self._connection is not None:
             self.database_pool.putconn(self._connection)
 
@@ -134,10 +133,9 @@ class FileHandler(RequestHandler, DatabaseMixin):
 
     async def _get_prefix(self):
         try:
-            prefix = self.path_kwargs['prefix']
+            return self.path_kwargs['prefix']
         except KeyError:
             raise HTTPError(400, reason="No correct prefix supplied")
-        return prefix
 
     def _check_download_traffic(self, prefix):
         current_traffic = self.database.get_traffic_by_prefix(prefix)
@@ -218,7 +216,7 @@ class FileHandler(RequestHandler, DatabaseMixin):
         return self.transfer.retrieve(StorageObject(prefix, file_path, etag, None))
 
     def on_finish(self):
-        self.finish_database()
+        super().on_finish()
         mon.REQ_IN_PROGRESS.dec()
         mon.REQ_RESPONSE.observe(perf_counter() - self._start_time)
 
@@ -238,10 +236,9 @@ class AuthorizationMixin:
         if auth_header is None:
             raise HTTPError(403, reason="No authorization given")
         try:
-            user = await self.auth_callback.auth(auth_header)
+            self.user = await self.auth_callback.auth(auth_header)
         except auth.UserNotFound:
             raise HTTPError(403, reason="User not found")
-        self.user = user
 
 
 # noinspection PyMethodOverriding,PyAbstractClass
@@ -252,9 +249,6 @@ class PrefixHandler(AuthorizationMixin, RequestHandler, DatabaseMixin):
         self.database_pool = database_pool
         self._connection = None
         self.auth_callback = get_auth_cls()(self.cache)
-
-    def on_finish(self):
-        self.finish_database()
 
     @gen.coroutine
     def get(self):
@@ -279,9 +273,6 @@ class QuotaHandler(AuthorizationMixin, RequestHandler, DatabaseMixin):
         self.database_pool = database_pool
         self._connection = None
         self.auth_callback = get_auth_cls()(self.cache)
-
-    def on_finish(self):
-        self.finish_database()
 
     @gen.coroutine
     def get(self):
