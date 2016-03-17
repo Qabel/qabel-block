@@ -156,9 +156,8 @@ class DummyTransfer(AbstractTransfer):
             cached = self._from_cache(storage_object)
         except KeyError:
             try:
-                size = os.path.getsize(
+                return os.path.getsize(
                     files[file_key(storage_object)].local_file)
-                return size
             except KeyError:
                 return None
         else:
@@ -191,8 +190,9 @@ class DummyTransfer(AbstractTransfer):
             if cached.etag == storage_object.etag:
                 return storage_object._replace(local_file=None)
 
-        object = files.get(file_key(storage_object), None)
-        if object is None:
+        try:
+            object = files[file_key(storage_object)]
+        except KeyError:
             return None
         if storage_object.etag == object.etag:
             return storage_object._replace(local_file=None)

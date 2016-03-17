@@ -13,8 +13,9 @@ from conftest import make_coroutine
 @pytest.mark.gen_test
 def test_dummy_auth():
     cache = Mock()
-    with pytest.raises(auth.BypassAuth):
-        yield DummyAuth(cache).auth("Token {}".format(options.dummy_auth))
+    user = yield DummyAuth(cache).auth("Token {}".format(options.dummy_auth))
+    assert user.user_id == 0
+    assert user.is_active
     with pytest.raises(auth.UserNotFound):
         yield DummyAuth(cache).auth("Foobar")
     with pytest.raises(auth.UserNotFound):

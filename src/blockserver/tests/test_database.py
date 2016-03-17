@@ -99,3 +99,7 @@ def test_quota_reached_by_large_file(pg_db, user_id, prefix):
 
 def test_traffic_default(pg_db):
     assert pg_db.get_traffic_by_prefix("non existing prefix") == 0
+
+
+def test_quota_reached_recursion(pg_db):
+    assert not pg_db.quota_reached(1, 1)

@@ -28,7 +28,3 @@ def test_traffic_limit(quota_policy):
     quota_policy.TRAFFIC_THRESHOLD = 10
     assert quota_policy.download(10)
     assert not quota_policy.download(11)
-
-
-def test_delete_policy(quota_policy):
-    assert quota_policy.delete()
