@@ -36,6 +36,9 @@ COUNT_AUTH_CACHE_SETS = Counter('block_auth_cache_sets', 'Number of cache sets f
 TRAFFIC_RESPONSE = Counter('block_traffic_response', 'Download traffic')
 TRAFFIC_REQUEST = Counter('block_traffic_request', 'Upload traffic')
 
+DB_WAIT_FOR_CONNECTIONS = Counter('block_wait_database_connections',
+                                  'Seconds waitet for getting a connection')
+
 
 def time(metric):
     @asyncio.coroutine

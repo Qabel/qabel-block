@@ -54,15 +54,14 @@ logger = logging.getLogger(__name__)
 
 class DatabaseMixin:
 
-    @property
-    def database(self):
-        if self._connection is None:
+    async def get_database(self):
+        while self._connection is None:
             try:
                 self._connection = self.database_pool.getconn()
             except psycopg2.pool.PoolError:
-                logger.error('Could not get a database connection. Closing all connections.')
-                self.database_pool.closeall()
-                self._connection = self.database_pool.getconn()
+                mon.DB_WAIT_FOR_CONNECTIONS.inc(0.5)
+                logger.warning('Waiting for db connection')
+                await gen.sleep(0.5)
             self._database = PostgresUserDatabase(self._connection)
         return self._database
 
@@ -105,6 +104,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
         await self._authorize_request()
         if self.request.method == 'POST':
             self.temp = tempfile.NamedTemporaryFile()
+        self.finish_database()
 
     def write_error(self, status_code, **kwargs):
         mon.COUNT_ACCESS_DENIED.inc()
@@ -114,7 +114,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
         prefix = await self._get_prefix()
 
         if self.request.method == 'GET':
-            self._authorize_get_request(prefix)
+            await self._authorize_get_request(prefix)
         else:
             try:
                 auth_header = self.request.headers.get('Authorization', None)
@@ -128,11 +128,12 @@ class FileHandler(DatabaseMixin, RequestHandler):
         except auth.UserNotFound:
             raise HTTPError(403, reason="User not found")
         else:
-            if not self.database.has_prefix(self.user.user_id, prefix):
+            db = await self.get_database()
+            if not db.has_prefix(self.user.user_id, prefix):
                 raise HTTPError(403, reason="Not authorized for this prefix")
 
-    def _authorize_get_request(self, prefix):
-        self._check_download_traffic(prefix)
+    async def _authorize_get_request(self, prefix):
+        self._check_download_traffic((await self.get_database()), prefix)
 
     async def _get_prefix(self):
         try:
@@ -140,8 +141,8 @@ class FileHandler(DatabaseMixin, RequestHandler):
         except KeyError:
             raise HTTPError(400, reason="No correct prefix supplied")
 
-    def _check_download_traffic(self, prefix):
-        current_traffic = self.database.get_traffic_by_prefix(prefix)
+    def _check_download_traffic(self, db, prefix):
+        current_traffic = db.get_traffic_by_prefix(prefix)
         if not QuotaPolicy.download(current_traffic):
             self._quota_error()
 
@@ -168,26 +169,27 @@ class FileHandler(DatabaseMixin, RequestHandler):
                 self.write(chunk)
             size = f_in.tell()
         mon.TRAFFIC_RESPONSE.inc(size)
-        self.save_traffic_log(prefix, size)
+        yield self.save_traffic_log(prefix, size)
         self.finish()
 
     @gen.coroutine
     def post(self, prefix, file_path):
         file_size = self.temp.tell()
-        self._authorize_upload_request(file_path, file_size, prefix)
+        yield self._authorize_upload_request(file_path, file_size, prefix)
+        self.finish_database()
 
         self.temp.seek(0)
         storage_object, size_diff = yield self.store_file(
                 prefix, file_path, self.temp.name)
         self.temp.close()
         mon.TRAFFIC_REQUEST.inc(storage_object.size)
-        self.save_size_log(prefix, size_diff)
+        yield self.save_size_log(prefix, size_diff)
         self.set_status(204)
         self.set_header('ETag', storage_object.etag)
         self.finish()
 
-    def _authorize_upload_request(self, file_path, file_size, prefix):
-        quota_reached = self.database.quota_reached(self.user.user_id, file_size)
+    async def _authorize_upload_request(self, file_path, file_size, prefix):
+        quota_reached = (await self.get_database()).quota_reached(self.user.user_id, file_size)
         is_block = file_path.startswith('block/')
         old_size = self.transfer.get_size(StorageObject(prefix, file_path))
         if old_size is None:
@@ -202,7 +204,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
     @gen.coroutine
     def delete(self, prefix, file_path):
         size = yield self.delete_file(prefix, file_path)
-        self.save_size_log(prefix, -size)
+        yield self.save_size_log(prefix, -size)
         self.set_status(204)
         self.finish()
 
@@ -223,13 +225,13 @@ class FileHandler(DatabaseMixin, RequestHandler):
         mon.REQ_IN_PROGRESS.dec()
         mon.REQ_RESPONSE.observe(perf_counter() - self._start_time)
 
-    def save_traffic_log(self, prefix, traffic):
+    async def save_traffic_log(self, prefix, traffic):
         if traffic > 0:
-            self.database.update_traffic(prefix, traffic)
+            (await self.get_database()).update_traffic(prefix, traffic)
 
-    def save_size_log(self, prefix, size):
+    async def save_size_log(self, prefix, size):
         if size != 0:
-            self.database.update_size(prefix, size)
+            (await self.get_database()).update_size(prefix, size)
 
 
 class AuthorizationMixin:
@@ -256,14 +258,16 @@ class PrefixHandler(AuthorizationMixin, DatabaseMixin, RequestHandler):
     @gen.coroutine
     def get(self):
         self.set_status(200)
-        prefixes = self.database.get_prefixes(self.user.user_id)
+        db = yield self.get_database()
+        prefixes = db.get_prefixes(self.user.user_id)
         self.write({'prefixes': prefixes})
         self.finish()
 
     @gen.coroutine
     def post(self):
         self.set_status(201)
-        new_prefix = self.database.create_prefix(self.user.user_id)
+        db = yield self.get_database()
+        new_prefix = db.create_prefix(self.user.user_id)
         self.write({'prefix': new_prefix})
         self.finish()
 
@@ -280,7 +284,8 @@ class QuotaHandler(AuthorizationMixin, DatabaseMixin, RequestHandler):
     @gen.coroutine
     def get(self):
         self.set_status(200)
-        quota, size = self.database.get_size(self.user.user_id)
+        db = yield self.get_database()
+        quota, size = db.get_size(self.user.user_id)
         self.write({'quota': quota, 'size': size})
         self.finish()
 
@@ -332,7 +337,7 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
         return DummyTransfer if options.dummy else S3Transfer
 
     if database_pool is None:
-        database_pool = SimpleConnectionPool(1, 2000, dsn=options.psql_dsn)
+        database_pool = SimpleConnectionPool(1, 20, dsn=options.psql_dsn)
 
     application = Application([
         (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[/\d\w-]+)', FileHandler, dict(
