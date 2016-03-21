@@ -67,6 +67,7 @@ class DatabaseMixin:
 
     def finish_database(self):
         if self._connection is not None:
+            self._connection = None
             self.database_pool.putconn(self._connection)
 
     def on_finish(self):
