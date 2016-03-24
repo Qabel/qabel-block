@@ -6,3 +6,4 @@ accounting_host="http://localhost:8877"
 port=8888
 api_secret="Foobar"
 psql_dsn='postgresql://postgres:postgres@localhost/qabel-block'
+max_body_size=2147483648
