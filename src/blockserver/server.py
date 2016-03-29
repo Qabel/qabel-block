@@ -104,8 +104,8 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.auth = None
         self.streamer = None
         await self._authorize_request()
-        self.request.connection.max_body_size = options.max_body_size
         if self.request.method == 'POST':
+            self.request.connection.set_max_body_size(options.max_body_size)
             self.temp = tempfile.NamedTemporaryFile()
         self.finish_database()
 

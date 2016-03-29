@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from tornado.httpclient import HTTPError
 from tornado.options import options
 from glinda.testing import services
 from unittest.mock import call
@@ -241,6 +242,22 @@ def test_quota_delete_and_download(backend, http_client, prefix, path, headers, 
     assert response.code == 402
     assert b'Quota reached' in response.body
     response = yield http_client.fetch(path, method='DELETE', headers=headers)
+    assert response.code == 204
+
+
+@pytest.mark.gen_test
+def test_denies_too_big_body(app_options, backend, http_client, path, headers):
+    app_options.max_body_size = 1
+    body = b'12'
+    with pytest.raises(HTTPError):
+        yield http_client.fetch(path, method='POST', body=body, headers=headers)
+
+
+@pytest.mark.gen_test
+def test_allows_allowed_body_size(app_options, backend, http_client, path, headers):
+    app_options.max_body_size = 2
+    body = b'12'
+    response = yield http_client.fetch(path, method='POST', body=body, headers=headers)
     assert response.code == 204
 
 
