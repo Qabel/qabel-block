@@ -42,6 +42,7 @@ define('dummy_cache', help="Use an in memory cache instead of redis",
        default=False)
 define('redis_host', help="Hostname of the redis server", default='localhost')
 define('redis_port', help="Port of the redis server", default=6379)
+define('max_body_size', help="Maximum size for uploads", default=2147483648)
 define('prometheus_port', help="Port to start the prometheus metrics server on",
        default=None, type=int)
 define('logging_config',
@@ -104,6 +105,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.streamer = None
         await self._authorize_request()
         if self.request.method == 'POST':
+            self.request.connection.set_max_body_size(options.max_body_size)
             self.temp = tempfile.NamedTemporaryFile()
         self.finish_database()
 

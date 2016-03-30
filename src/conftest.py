@@ -179,6 +179,11 @@ def app(cache, pg_pool):
     options.dummy_log = prev_log
 
 
+@pytest.fixture()
+def app_options():
+    return options
+
+
 @pytest.yield_fixture()
 def transfer(request, cache):
     transfer_backend = request.param
