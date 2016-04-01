@@ -306,7 +306,8 @@ def main():
     if options.debug:
         application.listen(address=options.address, port=options.port)
     else:
-        server = tornado.httpserver.HTTPServer(application)
+        server = tornado.httpserver.HTTPServer(application,
+                                               xheaders=True)
         server.bind(options.port)
         server.start()
     if options.asyncio:
