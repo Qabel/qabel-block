@@ -10,9 +10,6 @@ REQ_IN_PROGRESS = Gauge('block_in_progress_requests',
 WAIT_FOR_AUTH = Histogram('block_wait_for_auth',
                           'Time spent waiting for answers from the auth resource')
 
-WAIT_FOR_QUOTA = Histogram('block_wait_for_quota',
-                           'Time spent waiting for answers from the quota resource')
-
 TIME_IN_TRANSFER_STORE = Histogram('block_wait_for_transfer_store',
                                    'Time spent storing a file')
 TIME_IN_TRANSFER_RETRIEVE = Histogram('block_wait_for_transfer_retrieve',
@@ -27,8 +24,6 @@ REQ_RESPONSE = Histogram('block_response_time',
                          'Time to respond to a request')
 
 COUNT_ACCESS_DENIED = Counter('block_access_denied', 'Number of requests that received a 403')
-
-COUNT_QUOTA_ERROR = Counter('block_quota_error', 'Number of quota requests that failed')
 
 COUNT_AUTH_CACHE_HITS = Counter('block_auth_cache_hits', 'Number of cache hits for auth requests')
 COUNT_AUTH_CACHE_SETS = Counter('block_auth_cache_sets', 'Number of cache sets for auth requests')
