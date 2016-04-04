@@ -1,22 +1,21 @@
-import pytest
-import tempfile
-import os
-import random
 import string
+
+import os
+import pytest
+import random
+import tempfile
+from alembic.command import upgrade
+from alembic.config import Config
+from glinda.testing import services
+from pytest_dbfixtures.factories.postgresql import init_postgresql_database
+from pytest_dbfixtures.utils import try_import
+from tornado.options import options
+
 import blockserver.backend.cache as cache_backends
 import blockserver.server
 from blockserver.backend import quota
 from blockserver.backend import transfer as transfer_module
-from pytest_dbfixtures.factories.postgresql import init_postgresql_database
-from pytest_dbfixtures.utils import try_import
-
-from glinda.testing import services
-from tornado.options import options
-
 from blockserver.backend.database import PostgresUserDatabase
-
-from alembic.command import upgrade
-from alembic.config import Config
 
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 ALEMBIC_CONFIG = os.path.join(BASEDIR, 'alembic.ini')

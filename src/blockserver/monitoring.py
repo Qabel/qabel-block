@@ -19,7 +19,6 @@ TIME_IN_TRANSFER_DELETE = Histogram('block_wait_for_transfer_delete',
 
 SUMMARY_S3_REQUESTS = Summary('block_s3_requests', 'Count ant time of requests to s3')
 
-
 REQ_RESPONSE = Histogram('block_response_time',
                          'Time to respond to a request')
 
@@ -32,7 +31,13 @@ TRAFFIC_RESPONSE = Counter('block_traffic_response', 'Download traffic')
 TRAFFIC_REQUEST = Counter('block_traffic_request', 'Upload traffic')
 
 DB_WAIT_FOR_CONNECTIONS = Counter('block_wait_database_connections',
-                                  'Seconds waitet for getting a connection')
+                                  'Seconds waited for getting a connection')
+
+TRAFFIC_BY_REQUEST = Summary('block_traffic_by_request',
+                             'Traffic by individual request')
+
+QUOTA_BY_REQUEST = Summary('block_quota_by_request',
+                           'Quota change by request', ['type'])
 
 
 def time(metric):

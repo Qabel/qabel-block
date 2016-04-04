@@ -1,10 +1,17 @@
 import json
+from functools import partial
 
 import pytest
+from prometheus_client import REGISTRY
 from tornado.httpclient import HTTPError
 from tornado.options import options
 from glinda.testing import services
 from unittest.mock import call
+
+
+def stat_by_name(stat_name):
+    return partial(REGISTRY.get_sample_value, stat_name)
+
 
 @pytest.mark.gen_test
 def test_not_found(backend, http_client, path):
@@ -291,3 +298,28 @@ def test_database_finish_called_in_quota(backend, http_client, headers, base_url
     response = yield http_client.fetch(url, method='GET', headers=headers, raise_error=True)
     assert response.code == 200, response.body.decode('utf-8')
     finish_db.assert_called_with()
+
+
+@pytest.mark.gen_test
+def test_monitoring(backend, app, prefix, http_client, path, headers):
+    mon_traffic = stat_by_name('block_traffic_by_request_sum')
+    mon_quota = stat_by_name('block_quota_by_request_sum')
+    body = b'Dummy'
+    size = len(body)
+
+    traffic_before = mon_traffic() or 0
+    quota_before = mon_quota({'type': 'increase'}) or 0
+
+    yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    quota = mon_quota({'type': 'increase'})
+    assert quota - quota_before == size
+
+    quota_dec_before = mon_quota({'type': 'decrease'}) or 0
+
+    yield http_client.fetch(path, method='GET', headers=headers)
+    yield http_client.fetch(path, method='DELETE', headers=headers)
+    assert mon_traffic() - traffic_before == size
+
+    assert (mon_quota({'type': 'decrease'}) - quota_dec_before) == size
+
