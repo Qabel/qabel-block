@@ -231,10 +231,15 @@ class FileHandler(DatabaseMixin, RequestHandler):
     async def save_traffic_log(self, prefix, traffic):
         if traffic > 0:
             (await self.get_database()).update_traffic(prefix, traffic)
+            mon.TRAFFIC_BY_REQUEST.observe(traffic)
 
     async def save_size_log(self, prefix, size):
         if size != 0:
             (await self.get_database()).update_size(prefix, size)
+            if size > 0:
+                mon.QUOTA_BY_REQUEST.labels({'type': 'increase'}).observe(size)
+            else:
+                mon.QUOTA_BY_REQUEST.labels({'type': 'decrease'}).observe(-size)
 
 
 class AuthorizationMixin:

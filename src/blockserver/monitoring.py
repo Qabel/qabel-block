@@ -10,9 +10,6 @@ REQ_IN_PROGRESS = Gauge('block_in_progress_requests',
 WAIT_FOR_AUTH = Histogram('block_wait_for_auth',
                           'Time spent waiting for answers from the auth resource')
 
-WAIT_FOR_QUOTA = Histogram('block_wait_for_quota',
-                           'Time spent waiting for answers from the quota resource')
-
 TIME_IN_TRANSFER_STORE = Histogram('block_wait_for_transfer_store',
                                    'Time spent storing a file')
 TIME_IN_TRANSFER_RETRIEVE = Histogram('block_wait_for_transfer_retrieve',
@@ -22,13 +19,10 @@ TIME_IN_TRANSFER_DELETE = Histogram('block_wait_for_transfer_delete',
 
 SUMMARY_S3_REQUESTS = Summary('block_s3_requests', 'Count ant time of requests to s3')
 
-
 REQ_RESPONSE = Histogram('block_response_time',
                          'Time to respond to a request')
 
 COUNT_ACCESS_DENIED = Counter('block_access_denied', 'Number of requests that received a 403')
-
-COUNT_QUOTA_ERROR = Counter('block_quota_error', 'Number of quota requests that failed')
 
 COUNT_AUTH_CACHE_HITS = Counter('block_auth_cache_hits', 'Number of cache hits for auth requests')
 COUNT_AUTH_CACHE_SETS = Counter('block_auth_cache_sets', 'Number of cache sets for auth requests')
@@ -37,7 +31,13 @@ TRAFFIC_RESPONSE = Counter('block_traffic_response', 'Download traffic')
 TRAFFIC_REQUEST = Counter('block_traffic_request', 'Upload traffic')
 
 DB_WAIT_FOR_CONNECTIONS = Counter('block_wait_database_connections',
-                                  'Seconds waitet for getting a connection')
+                                  'Seconds waited for getting a connection')
+
+TRAFFIC_BY_REQUEST = Summary('block_traffic_by_request',
+                             'Traffic by individual request')
+
+QUOTA_BY_REQUEST = Summary('block_quota_by_request',
+                           'Quota change by request', ['type'])
 
 
 def time(metric):
