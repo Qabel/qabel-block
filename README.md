@@ -16,3 +16,4 @@ The server needs a postgresql database that needs to me initialized by
 	alembic -x "url=postgresql://username:password@localhost/dbname" upgrade head
 
 The tests also need a redis server on localhost, running on port 6379.
+And you need to place aws credentials as `~/.aws`.
