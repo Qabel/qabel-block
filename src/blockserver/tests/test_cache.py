@@ -30,4 +30,3 @@ def test_auth_cache_basics(cache):
     user_2 = User(2, False)
     cache.set_auth(AUTH_TOKEN, user_2)
     assert cache.get_auth(AUTH_TOKEN) == user_2
-

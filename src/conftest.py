@@ -22,9 +22,11 @@ ALEMBIC_CONFIG = os.path.join(BASEDIR, 'alembic.ini')
 
 transfer_module.BUCKET = 'qabelbox'
 
+
 @pytest.fixture
 def quota_policy():
     return quota.QuotaPolicy
+
 
 @pytest.fixture
 def auth_token():
@@ -66,20 +68,23 @@ def auth_server(service_layer):
 @pytest.fixture
 def file_path(prefix):
     return '/{}/'.format(prefix) + ''.join(random.choice(string.ascii_lowercase + string.digits)
-                          for _ in range(12))
+                                           for _ in range(12))
 
 
 @pytest.fixture
 def prefix_path(base_url):
     return base_url + '/api/v0/prefix/'
 
+
 @pytest.fixture
 def auth_path():
     return '/api/v0/auth/'
 
+
 @pytest.fixture
 def block_path(base_url, prefix):
     return base_url + '/api/v0/files/{}/block/foobar'.format(prefix)
+
 
 @pytest.fixture
 def path(base_url, file_path):
@@ -132,16 +137,10 @@ def pg_connection(request, postgresql_proc):
     pg_port = postgresql_proc.port
     pg_db = config.postgresql.db
 
-    init_postgresql_database(
-            psycopg2, config.postgresql.user, pg_host, pg_port, pg_db
-    )
+    init_postgresql_database(psycopg2, config.postgresql.user, pg_host, pg_port, pg_db)
     apply_migrations(config.postgresql.user, pg_host, pg_port, pg_db)
-    conn = psycopg2.connect(
-            dbname=pg_db,
-            user=config.postgresql.user,
-            host=pg_host,
-            port=pg_port
-    )
+    conn = psycopg2.connect(dbname=pg_db, user=config.postgresql.user,
+                            host=pg_host, port=pg_port)
     return conn
 
 
@@ -171,9 +170,9 @@ def app(cache, pg_pool):
     options.dummy_auth = 'MAGICFARYDUST'
     options.dummy_log = True
     yield blockserver.server.make_app(
-            cache_cls=lambda: (lambda: cache),
-            database_pool=pg_pool,
-            debug=True)
+        cache_cls=lambda: (lambda: cache),
+        database_pool=pg_pool,
+        debug=True)
     options.dummy_auth = prev_auth
     options.dummy_log = prev_log
 
@@ -206,7 +205,7 @@ def prefix(pg_db, user_id):
 
 def pytest_addoption(parser):
     parser.addoption("--dummy", action="store_true",
-        help="run only with the dummy backend")
+                     help="run only with the dummy backend")
     parser.addoption("--dummy-cache", action="store_true",
                      help="run only with the dummy cache")
 

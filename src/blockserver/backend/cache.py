@@ -117,4 +117,3 @@ class RedisCache(AbstractCache):
 
     def _get(self, key, *keys):
         return self._cache.hmget(key, keys)
-
