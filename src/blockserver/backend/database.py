@@ -60,8 +60,8 @@ class PostgresUserDatabase(AbstractUserDatabase):
         with self._cur() as cur:
             try:
                 cur.execute(
-                        'INSERT INTO users (user_id) VALUES (%s)',
-                        (user_id,))
+                    'INSERT INTO users (user_id) VALUES (%s)',
+                    (user_id,))
             except psycopg2.IntegrityError:
                 pass
 
@@ -163,4 +163,3 @@ class PostgresUserDatabase(AbstractUserDatabase):
         with self._cur() as cur:
             cur.execute('DELETE FROM users')
             cur.execute('DELETE FROM prefixes')
-

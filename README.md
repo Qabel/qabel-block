@@ -16,4 +16,5 @@ The server needs a postgresql (>=9.4) database that needs to me initialized by
 	alembic -x "url=postgresql://username:password@localhost/dbname" upgrade head
 
 The tests also need a redis server on localhost, running on port 6379. They start their own postgresql instance given it is installed.
-And you need to place aws credentials as `~/.aws`.
+And you need to place AWS credentials in `~/.aws`, the [boto docs](https://boto3.readthedocs.io/en/latest/guide/quickstart.html#configuration)
+document details and alternatives.

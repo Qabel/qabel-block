@@ -28,7 +28,7 @@ define('port', help="Port of this server", default=8888)
 define('address', help="Address of this server", default="localhost")
 define('apisecret', help="API_SECRET of the accounting server", default='secret')
 define('psql_dsn', help="libq connection string for postgresql",
-        default='postgresql://postgres:postgres@localhost/qabel-block')
+       default='postgresql://postgres:postgres@localhost/qabel-block')
 define('dummy_auth',
        help="Authenticate with this authentication token [Example: MAGICFARYDUST] "
             "for the prefix 'test'", default=None, type=str)
@@ -182,8 +182,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.finish_database()
 
         self.temp.seek(0)
-        storage_object, size_diff = yield self.store_file(
-                prefix, file_path, self.temp.name)
+        storage_object, size_diff = yield self.store_file(prefix, file_path, self.temp.name)
         self.temp.close()
         mon.TRAFFIC_REQUEST.inc(storage_object.size)
         yield self.save_size_log(prefix, size_diff)

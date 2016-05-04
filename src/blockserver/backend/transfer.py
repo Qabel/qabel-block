@@ -176,7 +176,9 @@ class DummyTransfer(AbstractTransfer):
         else:
             Path(new_path).touch()
         new_object = storage_object._replace(
-                etag=str(random.randint(1, 20000)), size=new_size, local_file=new_path)
+            local_file=new_path,
+            size=new_size,
+            etag=str(random.randint(1, 20000)))
         self._to_cache(new_object)
         files[file_key(storage_object)] = new_object
         return new_object, new_size - old_size
@@ -204,5 +206,3 @@ class DummyTransfer(AbstractTransfer):
             return os.path.getsize(files.pop(file_key(storage_object)).local_file)
         except KeyError:
             return 0
-
-

@@ -60,4 +60,3 @@ def test_get_size_does_not_corrupt_cache(cache, transfer, testfile):
     transfer.store(storage_object)
     cache.flush()
     transfer.get_size(StorageObject('foo', 'baz'))
-

@@ -43,7 +43,7 @@ def test_used_space_inc(pg_db, user_id, prefix):
     assert pg_db.get_size(user_id)[1] == size
 
     pg_db.update_size(second_prefix, size)
-    assert pg_db.get_size(user_id)[1]  == size * 2
+    assert pg_db.get_size(user_id)[1] == size * 2
 
 
 def test_used_space_dec(pg_db, user_id, prefix):
@@ -64,7 +64,7 @@ def test_traffic_for_prefix(pg_db, user_id, prefix):
 
 
 def test_quota(pg_db, user_id):
-    assert pg_db.get_quota(user_id) == 2*1024**3
+    assert pg_db.get_quota(user_id) == 2 * 1024**3
     pg_db.set_quota(user_id, 10)
     assert pg_db.get_quota(user_id) == 10
 
@@ -78,7 +78,7 @@ def test_quota_reached(pg_db, user_id, prefix):
     size = 10
     assert not pg_db.quota_reached(user_id, size)
     pg_db.set_quota(user_id, 10)
-    assert not pg_db.quota_reached(user_id, size-1)
+    assert not pg_db.quota_reached(user_id, size - 1)
     assert pg_db.quota_reached(user_id, size)
     pg_db.update_size(prefix, 10)
     assert pg_db.quota_reached(user_id, 0)
@@ -93,7 +93,7 @@ def test_traffic_by_prefix(pg_db, prefix):
 
 
 def test_quota_reached_by_large_file(pg_db, user_id, prefix):
-    size = 3*1024**3
+    size = 3 * 1024**3
     assert pg_db.quota_reached(user_id, size)
 
 

@@ -70,6 +70,7 @@ def test_etag_set_on_post(backend, http_client, path, headers):
     etag = response.headers.get('ETag', None)
     assert etag
 
+
 @pytest.mark.gen_test
 def test_etag_set_on_get(backend, http_client, path, headers):
     response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers)
@@ -115,7 +116,7 @@ def test_auth_backend_called(app, cache, http_client, path, auth_path, headers, 
 
 @pytest.mark.gen_test
 def test_no_long_path(backend, http_client, path, headers):
-    response = yield http_client.fetch(path+'/blocks/foobar', method='POST', body=b'', headers=headers)
+    response = yield http_client.fetch(path + '/blocks/foobar', method='POST', body=b'', headers=headers)
     assert response.code == 204
 
 
@@ -157,7 +158,7 @@ def test_get_prefixes(app, http_client, prefix_path, user_id, headers, pg_db):
 
 @pytest.mark.gen_test
 def test_log_and_monitoring(app, mocker, http_client, path, auth_path, headers,
-                  auth_server, file_path, prefix):
+                            auth_server, file_path, prefix):
     mon_traffic = stat_by_name('block_traffic_by_request_sum')
     mon_quota = stat_by_name('block_quota_by_request_sum')
 
@@ -256,7 +257,7 @@ def test_quota_reached_meta_files_size_limit(backend, http_client, path, headers
 
 @pytest.mark.gen_test
 def test_quota_delete_and_download(backend, http_client, prefix, path, headers, pg_db, user_id):
-    pg_db.update_traffic(prefix, 100*1024**3 + 1)
+    pg_db.update_traffic(prefix, 100 * 1024**3 + 1)
     body = b'Dummy'
     response = yield http_client.fetch(path, method='POST', body=body, headers=headers)
     assert response.code == 204
@@ -313,4 +314,3 @@ def test_database_finish_called_in_quota(backend, http_client, headers, base_url
     response = yield http_client.fetch(url, method='GET', headers=headers, raise_error=True)
     assert response.code == 200, response.body.decode('utf-8')
     finish_db.assert_called_with()
-
