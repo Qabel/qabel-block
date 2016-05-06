@@ -14,27 +14,28 @@ def stat_by_name(stat_name):
 
 
 @pytest.mark.gen_test
-def test_not_found(backend, http_client, path):
+def test_not_found(backend, http_client, path, temp_check):
     response = yield http_client.fetch(path, raise_error=False)
     assert response.code == 404
 
 
 @pytest.mark.gen_test
-def test_no_body(backend, http_client, path, headers):
-    response = yield http_client.fetch(path, method='POST', body=b'', headers=headers,
-                                       raise_error=False)
+def test_no_body(backend, http_client, path, headers, temp_check):
+    with temp_check:
+        response = yield http_client.fetch(path, method='POST', body=b'', headers=headers,
+                                           raise_error=False)
     assert response.code == 204, response.body.decode('utf-8')
 
 
 @pytest.mark.gen_test
-def test_no_auth_get(http_client, path, cache):
+def test_no_auth_get(http_client, path, cache, temp_check):
     cache.flush()
     response = yield http_client.fetch(path, method='GET', raise_error=False)
     assert response.code == 404
 
 
 @pytest.mark.gen_test
-def test_no_auth_post(http_client, path, cache):
+def test_no_auth_post(http_client, path, cache, temp_check):
     cache.flush()
     response = yield http_client.fetch(path, method='POST', body=b'Dummy',
                                        raise_error=False)
@@ -42,7 +43,8 @@ def test_no_auth_post(http_client, path, cache):
 
 
 @pytest.mark.gen_test
-def test_normal_cycle(backend, http_client, path, headers):
+def test_normal_cycle(backend, http_client, path, headers, temp_check):
+    temp_check.forget()
     response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers)
     assert response.code == 204
     response = yield http_client.fetch(path, method='GET', headers=headers)
@@ -55,6 +57,7 @@ def test_normal_cycle(backend, http_client, path, headers):
     assert response.code == 204
     response = yield http_client.fetch(path, method='GET', headers=headers, raise_error=False)
     assert response.code == 404
+    temp_check.assert_clean()
 
 
 @pytest.mark.gen_test
@@ -196,7 +199,8 @@ def test_log_and_monitoring(app, mocker, http_client, path, auth_path, headers,
 
 
 @pytest.mark.gen_test
-def test_normal_cycle_with_quota_changes(backend, http_client, path, quota_path, headers):
+def test_normal_cycle_with_quota_changes(backend, http_client, path, quota_path, headers, temp_check):
+    temp_check.forget()
     size = 0
     async def check_quota():
         response = await http_client.fetch(quota_path, method='GET', headers=headers)
@@ -224,63 +228,68 @@ def test_normal_cycle_with_quota_changes(backend, http_client, path, quota_path,
     response = yield http_client.fetch(path, method='GET', headers=headers, raise_error=False)
     assert response.code == 404
     yield check_quota()
+    temp_check.assert_clean()
 
 
 @pytest.mark.gen_test
-def test_quota_reached_and_upload_denied(backend, http_client, block_path, headers, pg_db, user_id):
+def test_quota_reached_and_upload_denied(backend, http_client, block_path, headers, pg_db, user_id, temp_check):
     pg_db.set_quota(user_id, 0)
     body = b'Dummy'
-    response = yield http_client.fetch(block_path, method='POST', body=body,
-                                       headers=headers, raise_error=False)
+    with temp_check:
+        response = yield http_client.fetch(block_path, method='POST', body=body, headers=headers, raise_error=False)
     assert response.code == 402
     assert b'Quota reached' in response.body
 
 
 @pytest.mark.gen_test
-def test_quota_reached_but_meta_files_allowed(backend, http_client, path, headers, pg_db, user_id):
+def test_quota_reached_but_meta_files_allowed(backend, http_client, path, headers, pg_db, user_id, temp_check):
     body = b'Dummy'
-    yield http_client.fetch(path, method='POST', body=body, headers=headers)
-    pg_db.set_quota(user_id, 0)
-    response = yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    with temp_check:
+        yield http_client.fetch(path, method='POST', body=body, headers=headers)
+        pg_db.set_quota(user_id, 0)
+        response = yield http_client.fetch(path, method='POST', body=body, headers=headers)
     assert response.code == 204
 
 
 @pytest.mark.gen_test
-def test_quota_reached_meta_files_size_limit(backend, http_client, path, headers, pg_db, user_id):
+def test_quota_reached_meta_files_size_limit(backend, http_client, path, headers, pg_db, user_id, temp_check):
     pg_db.set_quota(user_id, 0)
     body = b'+' * 151 * 1024
-    response = yield http_client.fetch(path, method='POST', body=body, headers=headers,
-                                       raise_error=False)
+    with temp_check:
+        response = yield http_client.fetch(path, method='POST', body=body, headers=headers,
+                                           raise_error=False)
     assert response.code == 402
     assert b'Quota reached' in response.body
 
 
 @pytest.mark.gen_test
-def test_quota_delete_and_download(backend, http_client, prefix, path, headers, pg_db, user_id):
+def test_quota_delete_and_download(backend, http_client, prefix, path, headers, pg_db, user_id, temp_check):
     pg_db.update_traffic(prefix, 100 * 1024**3 + 1)
     body = b'Dummy'
-    response = yield http_client.fetch(path, method='POST', body=body, headers=headers)
-    assert response.code == 204
-    response = yield http_client.fetch(path, method='GET', headers=headers, raise_error=False)
-    assert response.code == 402
-    assert b'Quota reached' in response.body
-    response = yield http_client.fetch(path, method='DELETE', headers=headers)
-    assert response.code == 204
+    with temp_check:
+        response = yield http_client.fetch(path, method='POST', body=body, headers=headers)
+        assert response.code == 204
+        response = yield http_client.fetch(path, method='GET', headers=headers, raise_error=False)
+        assert response.code == 402
+        assert b'Quota reached' in response.body
+        response = yield http_client.fetch(path, method='DELETE', headers=headers)
+        assert response.code == 204
 
 
 @pytest.mark.gen_test
-def test_denies_too_big_body(app_options, backend, http_client, path, headers):
+def test_denies_too_big_body(app_options, backend, http_client, path, headers, temp_check):
     app_options.max_body_size = 1
     body = b'12'
-    with pytest.raises(HTTPError):
+    with temp_check, pytest.raises(HTTPError):
         yield http_client.fetch(path, method='POST', body=body, headers=headers)
 
 
 @pytest.mark.gen_test
-def test_allows_allowed_body_size(app_options, backend, http_client, path, headers):
+def test_allows_allowed_body_size(app_options, backend, http_client, path, headers, temp_check):
     app_options.max_body_size = 2
     body = b'12'
-    response = yield http_client.fetch(path, method='POST', body=body, headers=headers)
+    with temp_check:
+        response = yield http_client.fetch(path, method='POST', body=body, headers=headers)
     assert response.code == 204
 
 

@@ -1,9 +1,12 @@
-import string
-
+import functools
 import os
 import pytest
 import random
+import string
 import tempfile
+import traceback
+from tempfile import NamedTemporaryFile
+
 from alembic.command import upgrade
 from alembic.config import Config
 from glinda.testing import services
@@ -201,6 +204,42 @@ def user_id():
 @pytest.fixture
 def prefix(pg_db, user_id):
     return pg_db.create_prefix(user_id)
+
+
+@pytest.fixture
+def temp_check(monkeypatch):
+    """
+    Check for leftover NamedTemporaryFile()s. Use as a context manager, or the forget() / assert_clean()
+    methods.
+    """
+    temp_files = []
+
+    @functools.wraps(NamedTemporaryFile)
+    def named_temp_file(*args, **kwargs):
+        temp = NamedTemporaryFile(*args, **kwargs)
+        temp_files.append((temp, traceback.format_stack(limit=6)))
+        return temp
+
+    class TempCheckMethods:
+        def assert_clean(self):
+            assert temp_files, "No temporary files created since forget(), but assert_clean() called"
+            for temp, stacktrace in temp_files:
+                if os.path.exists(temp.name):
+                    print(''.join(stacktrace))
+                    # the below assert also makes py.test print the temporary path (among other things)
+                    assert not os.path.exists(temp.name)
+
+        def forget(self):
+            temp_files.clear()
+
+        __enter__ = forget
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            assert temp_files, "No temporary files created in 'with temp_check' block"
+            self.assert_clean()
+
+    monkeypatch.setattr(tempfile, 'NamedTemporaryFile', named_temp_file)
+    return TempCheckMethods()
 
 
 def pytest_addoption(parser):
