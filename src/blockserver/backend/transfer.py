@@ -48,7 +48,7 @@ class AbstractTransfer(ABC):
 
     @abstractmethod
     def retrieve(self, storage_object: StorageObject) -> Union[StorageObject, None]:
-        pass
+        """Retrieve file; returned StorageObject.local_file is a temporary and has to be cleaned up by the caller."""
 
     @abstractmethod
     def delete(self, storage_object: StorageObject) -> int:
@@ -199,7 +199,9 @@ class DummyTransfer(AbstractTransfer):
         if storage_object.etag == object.etag:
             return storage_object._replace(local_file=None)
         else:
-            return object
+            with tempfile.NamedTemporaryFile('wb', delete=False) as temp, open(object.local_file, 'rb') as fd:
+                shutil.copyfileobj(fd, temp)
+                return object._replace(local_file=temp.name)
 
     def delete(self, storage_object: StorageObject):
         try:
