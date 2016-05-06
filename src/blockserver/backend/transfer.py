@@ -127,10 +127,8 @@ class S3Transfer(AbstractTransfer):
                     return None
             size = response['ContentLength']
             with tempfile.NamedTemporaryFile('wb', delete=False) as temp:
-                streaming_body = response['Body']
-                for chunk in iter(lambda: streaming_body.read(8192), b''):
-                    temp.write(chunk)
-                return storage_object._replace(local_file=temp.name, etag=response['ETag'], size=size)
+                shutil.copyfileobj(response['Body'], temp)
+            return storage_object._replace(local_file=temp.name, etag=response['ETag'], size=size)
 
     @mon.TIME_IN_TRANSFER_DELETE.time()
     def delete(self, storage_object):
@@ -199,9 +197,9 @@ class DummyTransfer(AbstractTransfer):
         if storage_object.etag == object.etag:
             return storage_object._replace(local_file=None)
         else:
-            with tempfile.NamedTemporaryFile('wb', delete=False) as temp, open(object.local_file, 'rb') as fd:
+            with open(object.local_file, 'rb') as fd, tempfile.NamedTemporaryFile('wb', delete=False) as temp:
                 shutil.copyfileobj(fd, temp)
-                return object._replace(local_file=temp.name)
+            return object._replace(local_file=temp.name)
 
     def delete(self, storage_object: StorageObject):
         try:
