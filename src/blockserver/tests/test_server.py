@@ -75,11 +75,12 @@ def test_etag_set_on_post(backend, http_client, path, headers):
 
 
 @pytest.mark.gen_test
-def test_etag_set_on_get(backend, http_client, path, headers):
+def test_etag_set_on_get(backend, http_client, path, headers, temp_check):
     response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers)
     etag = response.headers['ETag']
     assert len(etag) > 0
-    response = yield http_client.fetch(path, method='GET', headers=headers, raise_error=False)
+    with temp_check.no_new_temp():
+        response = yield http_client.fetch(path, method='GET', headers=headers, raise_error=False)
     assert response.code == 200
     assert response.headers['ETag'] == etag
 
@@ -101,7 +102,7 @@ def test_etag_modified(backend, http_client, path, headers):
     assert response.code == 204
     headers['If-None-Match'] = "anothertag"
     response = yield http_client.fetch(path, method='GET', headers=headers)
-    assert response.code == 200
+    assert response.code == 200, response.body == b'Dummy'
 
 
 @pytest.mark.gen_test

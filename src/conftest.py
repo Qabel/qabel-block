@@ -221,6 +221,13 @@ def temp_check(monkeypatch):
         return temp
 
     class TempCheckMethods:
+        class no_new_temp:
+            def __enter__(self):
+                self.oldtmp = temp_files
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                assert temp_files == self.oldtmp
+
         def assert_clean(self):
             assert temp_files, "No temporary files created since forget(), but assert_clean() called"
             for temp, stacktrace in temp_files:

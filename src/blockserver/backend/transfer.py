@@ -15,7 +15,7 @@ from blockserver import monitoring as mon
 StorageObject = NamedTuple('StorageObject',
                            [('prefix', str), ('file_path', str),
                             ('etag', str), ('local_file', str),
-                            ('size', int)])
+                            ('size', int), ('fd', object)])
 
 StorageObject.__new__.__defaults__ = (None,) * len(StorageObject._fields)
 
@@ -48,7 +48,7 @@ class AbstractTransfer(ABC):
 
     @abstractmethod
     def retrieve(self, storage_object: StorageObject) -> Union[StorageObject, None]:
-        """Retrieve file; returned StorageObject.local_file is a temporary and has to be cleaned up by the caller."""
+        """Retrieve file, returns StorageObject with file-like StorageObject.fd"""
 
     @abstractmethod
     def delete(self, storage_object: StorageObject) -> int:
@@ -111,7 +111,7 @@ class S3Transfer(AbstractTransfer):
             pass
         else:
             if cached.etag == storage_object.etag:
-                return storage_object._replace(local_file=None)
+                return storage_object._replace(fd=None)
         obj = self.s3.Object(BUCKET, file_key(storage_object))
         with mon.SUMMARY_S3_REQUESTS.time():
             try:
@@ -122,13 +122,11 @@ class S3Transfer(AbstractTransfer):
             except ClientError as e:
                 status = e.response['ResponseMetadata']['HTTPStatusCode']
                 if status == 304:
-                    return storage_object._replace(local_file=None)
+                    return storage_object._replace(fd=None)
                 else:
                     return None
             size = response['ContentLength']
-            with tempfile.NamedTemporaryFile('wb', delete=False) as temp:
-                shutil.copyfileobj(response['Body'], temp)
-            return storage_object._replace(local_file=temp.name, etag=response['ETag'], size=size)
+            return storage_object._replace(fd=response['Body'], etag=response['ETag'], size=size)
 
     @mon.TIME_IN_TRANSFER_DELETE.time()
     def delete(self, storage_object):
@@ -188,18 +186,16 @@ class DummyTransfer(AbstractTransfer):
             pass
         else:
             if cached.etag == storage_object.etag:
-                return storage_object._replace(local_file=None)
+                return storage_object._replace(fd=None)
 
         try:
             object = files[file_key(storage_object)]
         except KeyError:
             return None
         if storage_object.etag == object.etag:
-            return storage_object._replace(local_file=None)
+            return storage_object._replace(fd=None)
         else:
-            with open(object.local_file, 'rb') as fd, tempfile.NamedTemporaryFile('wb', delete=False) as temp:
-                shutil.copyfileobj(fd, temp)
-            return object._replace(local_file=temp.name)
+            return object._replace(fd=open(object.local_file, 'rb'))
 
     def delete(self, storage_object: StorageObject):
         try:

@@ -1,4 +1,4 @@
-import os
+import shutil
 import psycopg2
 import json
 import logging
@@ -167,16 +167,14 @@ class FileHandler(DatabaseMixin, RequestHandler):
         if storage_object is None:
             raise HTTPError(404, reason="File not found")
         self.set_header('ETag', storage_object.etag)
-        if storage_object.local_file is None:
+        if storage_object.fd is None:
             self.set_status(304)
             raise Finish
 
-        self.set_header('Content-Length', storage_object.size)
-        with open(storage_object.local_file, 'rb') as f_in:
-            for chunk in iter(lambda: f_in.read(8192), b''):
-                self.write(chunk)
-            size = f_in.tell()
-        os.unlink(storage_object.local_file)
+        size = storage_object.size
+        self.set_header('Content-Length', size)
+        shutil.copyfileobj(storage_object.fd, self)
+        storage_object.fd.close()
         mon.TRAFFIC_RESPONSE.inc(size)
         yield self.save_traffic_log(prefix, size)
         self.finish()
