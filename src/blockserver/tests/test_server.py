@@ -14,7 +14,7 @@ def stat_by_name(stat_name):
 
 
 @pytest.mark.gen_test
-def test_not_found(backend, http_client, path, temp_check):
+def test_not_found(backend, http_client, path):
     response = yield http_client.fetch(path, raise_error=False)
     assert response.code == 404
 
@@ -28,14 +28,14 @@ def test_no_body(backend, http_client, path, headers, temp_check):
 
 
 @pytest.mark.gen_test
-def test_no_auth_get(http_client, path, cache, temp_check):
+def test_no_auth_get(http_client, path, cache):
     cache.flush()
     response = yield http_client.fetch(path, method='GET', raise_error=False)
     assert response.code == 404
 
 
 @pytest.mark.gen_test
-def test_no_auth_post(http_client, path, cache, temp_check):
+def test_no_auth_post(http_client, path, cache):
     cache.flush()
     response = yield http_client.fetch(path, method='POST', body=b'Dummy',
                                        raise_error=False)
