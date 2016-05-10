@@ -130,6 +130,8 @@ class FileHandler(DatabaseMixin, RequestHandler):
             self.user = await self.auth_callback.auth(auth_header)
         except auth.UserNotFound:
             raise HTTPError(403, reason="User not found")
+        except auth.BypassAuth as bypass_auth:
+            self.user = bypass_auth.args[0]
         else:
             db = await self.get_database()
             if not db.has_prefix(self.user.user_id, prefix):
@@ -251,6 +253,8 @@ class AuthorizationMixin:
             self.user = await self.auth_callback.auth(auth_header)
         except auth.UserNotFound:
             raise HTTPError(403, reason="User not found")
+        except auth.BypassAuth as bypass_auth:
+            self.user = bypass_auth.args[0]
 
 
 # noinspection PyMethodOverriding,PyAbstractClass
