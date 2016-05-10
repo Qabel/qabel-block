@@ -1,3 +1,4 @@
+import shutil
 import psycopg2
 import json
 import logging
@@ -105,7 +106,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.streamer = None
         await self._authorize_request()
         if self.request.method == 'POST':
-            self.request.connection.set_max_body_size(options.max_body_size)
+            self.remaining_upload_size = options.max_body_size
             self.temp = tempfile.NamedTemporaryFile()
         self.finish_database()
 
@@ -155,6 +156,10 @@ class FileHandler(DatabaseMixin, RequestHandler):
         raise HTTPError(402, reason="Quota reached")
 
     async def data_received(self, chunk):
+        self.remaining_upload_size -= len(chunk)
+        if self.remaining_upload_size < 0:
+            self.temp.close()
+            raise HTTPError(403, reason="Content-Length too large")
         self.temp.write(chunk)
 
     @gen.coroutine
@@ -164,15 +169,14 @@ class FileHandler(DatabaseMixin, RequestHandler):
         if storage_object is None:
             raise HTTPError(404, reason="File not found")
         self.set_header('ETag', storage_object.etag)
-        if storage_object.local_file is None:
+        if storage_object.fd is None:
             self.set_status(304)
             raise Finish
 
-        self.set_header('Content-Length', storage_object.size)
-        with open(storage_object.local_file, 'rb') as f_in:
-            for chunk in iter(lambda: f_in.read(8192), b''):
-                self.write(chunk)
-            size = f_in.tell()
+        size = storage_object.size
+        self.set_header('Content-Length', size)
+        shutil.copyfileobj(storage_object.fd, self)
+        storage_object.fd.close()
         mon.TRAFFIC_RESPONSE.inc(size)
         yield self.save_traffic_log(prefix, size)
         self.finish()
@@ -203,6 +207,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
             is_overwrite = True
             size_change = file_size - old_size
         if not QuotaPolicy.upload(quota_reached, size_change, is_block, is_overwrite):
+            self.temp.close()
             self._quota_error()
 
     @gen.coroutine
@@ -226,6 +231,8 @@ class FileHandler(DatabaseMixin, RequestHandler):
 
     def on_finish(self):
         super().on_finish()
+        if self.request.method == 'POST':
+            self.temp.close()
         mon.REQ_IN_PROGRESS.dec()
         mon.REQ_RESPONSE.observe(perf_counter() - self._start_time)
 
