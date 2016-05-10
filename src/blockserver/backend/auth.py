@@ -28,7 +28,7 @@ class DummyAuth:
 
     async def auth(self, auth_header: str) -> int:
         if auth_header == 'Token {}'.format(options.dummy_auth):
-            return User(user_id=0, is_active=True)
+            raise BypassAuth(User(user_id=0, is_active=True))
         else:
             raise UserNotFound()
 

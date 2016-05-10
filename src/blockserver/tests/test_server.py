@@ -14,6 +14,14 @@ def stat_by_name(stat_name):
 
 
 @pytest.mark.gen_test
+def test_dummy_auth_arbitrary_post(backend, http_client, base_url, headers):
+    url = base_url + '/api/v0/files/some_arbitrary_prefix/some_file'
+    body = b'Dummy'
+    response = yield http_client.fetch(url, method='POST', body=body, headers=headers)
+    assert response.code == 204
+
+
+@pytest.mark.gen_test
 def test_not_found(backend, http_client, path):
     response = yield http_client.fetch(path, raise_error=False)
     assert response.code == 404

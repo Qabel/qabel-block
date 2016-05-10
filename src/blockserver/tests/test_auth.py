@@ -6,14 +6,17 @@ from glinda.testing import services
 from pytest import fixture
 
 from blockserver.backend import auth
-from blockserver.backend.auth import DummyAuth, Auth
+from blockserver.backend.auth import DummyAuth, Auth, BypassAuth
 from conftest import make_coroutine
 
 
 @pytest.mark.gen_test
 def test_dummy_auth():
     cache = Mock()
-    user = yield DummyAuth(cache).auth("Token {}".format(options.dummy_auth))
+    try:
+        yield DummyAuth(cache).auth("Token {}".format(options.dummy_auth))
+    except BypassAuth as bypass_auth:
+        user = bypass_auth.args[0]
     assert user.user_id == 0
     assert user.is_active
     with pytest.raises(auth.UserNotFound):

@@ -103,7 +103,7 @@ def backend(request, cache):
     options.dummy = switch_to
     if options.dummy:
         transfer.files = {}
-    yield
+    yield request.param
     options.dummy = before
 
 
