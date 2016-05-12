@@ -98,6 +98,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.auth_callback = get_auth_cls()(self.cache)
         self.database_pool = database_pool
         self._connection = None
+        self.temp = None
 
     async def prepare(self):
         self._start_time = perf_counter()
@@ -236,7 +237,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
 
     def on_finish(self):
         super().on_finish()
-        if self.request.method == 'POST':
+        if self.temp:
             self.temp.close()
         mon.REQ_IN_PROGRESS.dec()
         mon.REQ_RESPONSE.observe(perf_counter() - self._start_time)
