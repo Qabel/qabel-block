@@ -22,13 +22,18 @@ class BypassAuth(AuthError):
 
 
 class DummyAuth:
+    QUOTA = 2 * 1024**3
+    TRAFFIC_QUOTA = 20 * 1024**3
 
     def __init__(self, cache_backend):
         pass
 
     async def auth(self, auth_header: str) -> int:
         if auth_header == 'Token {}'.format(options.dummy_auth):
-            raise BypassAuth(User(user_id=0, is_active=True))
+            raise BypassAuth(User(user_id=0,
+                                  is_active=True,
+                                  quota=self.QUOTA,
+                                  traffic_quota=self.TRAFFIC_QUOTA))
         else:
             raise UserNotFound()
 
@@ -63,7 +68,10 @@ class AccountingServerAuth:
             raise AuthError(e)
 
         try:
-            return User(user_id=body.get('user_id'), is_active=body.get('active'))
+            return User(user_id=body['user_id'],
+                        is_active=body['active'],
+                        quota=body['block_quota'],
+                        traffic_quota=body['monthly_traffic_quota'])
         except KeyError:
             raise UserNotFound('Invalid response from accounting server')
 

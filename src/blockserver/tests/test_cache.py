@@ -24,9 +24,9 @@ def test_auth_cache_basics(cache):
         cache.get_auth(AUTH_TOKEN)
     with pytest.raises(ValueError):
         cache.set_auth(AUTH_TOKEN, None)
-    user = User(0, True)
+    user = User(0, True, 123, 456)
     cache.set_auth(AUTH_TOKEN, user)
     assert cache.get_auth(AUTH_TOKEN) == user
-    user_2 = User(2, False)
+    user_2 = User(2, False, 456, 123789)
     cache.set_auth(AUTH_TOKEN, user_2)
     assert cache.get_auth(AUTH_TOKEN) == user_2

@@ -41,16 +41,22 @@ class AbstractCache(ABC):
     def set_auth(self, authentication_token: str, user: User):
         if not isinstance(user, User):
             raise ValueError('Need a User object')
-        self._set(authentication_token, user_id=str(user.user_id).encode('utf-8'),
-                  is_active=str(int(user.is_active)).encode('utf-8'))
+        self._set(authentication_token,
+                  user_id=str(user.user_id).encode(),
+                  is_active=str(int(user.is_active)).encode(),
+                  quota=str(int(user.quota)).encode(),
+                  traffic_quota=str(int(user.traffic_quota)).encode())
         self._set_expire(authentication_token, AUTH_CACHE_EXPIRE)
 
     def get_auth(self, authentication_token: str) -> int:
-        user_info = self._get(authentication_token, 'user_id', 'is_active')
-        user_id, is_active = user_info
+        user_info = self._get(authentication_token, 'user_id', 'is_active', 'quota', 'traffic_quota')
+        user_id, is_active, quota, traffic_quota = user_info
         if user_id is None:
             raise KeyError('Element not found')
-        return User(user_id=int(user_id.decode('utf-8')), is_active=(is_active == b'1'))
+        return User(user_id=int(user_id.decode('utf-8')),
+                    is_active=(is_active == b'1'),
+                    quota=int(quota.decode()),
+                    traffic_quota=int(traffic_quota.decode()))
 
     def _storage_key(self, storage_object):
         return self.STORAGE_PREFIX + file_key(storage_object)

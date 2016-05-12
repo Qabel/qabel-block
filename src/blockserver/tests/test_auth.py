@@ -63,7 +63,7 @@ def test_auth_cache_called(mock_auth, mock_cache):
 @pytest.mark.gen_test
 def test_auth_cache(mock_auth, cache):
     token = sentinel.mock
-    ret = auth.User(0, True)
+    ret = auth.User(0, True, 123, 456)
     mock_auth.return_value = ret
     assert (yield Auth(cache).auth(token)) == ret
     mock_auth.assert_called_once_with(token)
@@ -87,10 +87,10 @@ def test_auth_request(mocker):
                  new=make_coroutine(fetch_mock))
     token = 'Token foobar'
     ret = sentinel.ret
-    ret.body = b'{"user_id": 0, "active": true}'
+    ret.body = b'{"user_id": 0, "active": true, "block_quota": 512, "monthly_traffic_quota": 1024}'
     fetch_mock.return_value = ret
     response = yield auth.AccountingServerAuth.request(token)
-    assert response == auth.User(user_id=0, is_active=True)
+    assert response == auth.User(user_id=0, is_active=True, quota=512, traffic_quota=1024)
     fetch_mock.assert_called_once_with('{"auth": "Token foobar"}')
 
 
@@ -126,19 +126,21 @@ def test_auth_send_request_error_propagation(app, http_client, auth_server):
 @pytest.mark.gen_test
 def test_auth_returns_user_object(app, http_client, auth_server):
     path = '/api/v0/auth/'
-    body = b'{"user_id": 0, "active": true}'
+    body = b'{"user_id": 0, "active": true, "block_quota": 512, "monthly_traffic_quota": 123456789}'
     auth_server.add_response(services.Request('POST', path),
                              services.Response(200, body=body))
     user = yield auth.AccountingServerAuth.request('foobar')
     assert isinstance(user, auth.User)
     assert user.user_id == 0
     assert user.is_active
+    assert user.quota == 512
+    assert user.traffic_quota == 123456789
 
 
 @pytest.mark.gen_test
 def test_auth_returns_inactive_user_object(app, http_client, auth_server):
     path = '/api/v0/auth/'
-    body = b'{"user_id": 0, "active": false}'
+    body = b'{"user_id": 0, "active": false, "block_quota": 512, "monthly_traffic_quota": 123456789}'
     auth_server.add_response(services.Request('POST', path),
                              services.Response(200, body=body))
     user = yield auth.AccountingServerAuth.request('foobar')

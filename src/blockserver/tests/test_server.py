@@ -118,7 +118,8 @@ def test_auth_backend_called(app, cache, http_client, path, auth_path, headers, 
     body = b'Dummy'
     _, prefix, file_name = file_path.split('/')
     auth_server.add_response(services.Request('POST', auth_path),
-                             services.Response(200, body=b'{"user_id": 0, "active":true}'))
+                             services.Response(200, body=b'{"user_id": 0, "active": true,'
+                                                         b'"block_quota": 123, "monthly_traffic_quota": 789}'))
     response = yield http_client.fetch(path, method='POST', body=body, headers=headers,
                                        raise_error=False)
     auth_request = auth_server.get_request(auth_path)
@@ -186,7 +187,8 @@ def test_log_and_monitoring(app, mocker, http_client, path, auth_path, headers,
     size = len(body)
     _, prefix_name, file_name = file_path.split('/')
     auth_server.add_response(services.Request('POST', auth_path),
-                             services.Response(200, body=b'{"user_id": 0, "active":true}'))
+                             services.Response(200, body=b'{"user_id": 0, "active": true,'
+                                                         b'"block_quota": 123, "monthly_traffic_quota": 789}'))
     yield http_client.fetch(path, method='POST', body=body, headers=headers)
     quota = mon_quota({'type': 'increase'})
     assert quota - quota_before == size
