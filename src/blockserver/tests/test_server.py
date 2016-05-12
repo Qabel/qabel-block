@@ -22,12 +22,6 @@ def test_dummy_auth_arbitrary_post(backend, http_client, base_url, headers):
 
 
 @pytest.mark.gen_test
-def test_not_found(backend, http_client, path):
-    response = yield http_client.fetch(path, raise_error=False)
-    assert response.code == 404
-
-
-@pytest.mark.gen_test
 def test_no_body(backend, http_client, path, headers, temp_check):
     with temp_check:
         response = yield http_client.fetch(path, method='POST', body=b'', headers=headers,
