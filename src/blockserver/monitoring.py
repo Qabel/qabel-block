@@ -22,7 +22,9 @@ SUMMARY_S3_REQUESTS = Summary('block_s3_requests', 'Count ant time of requests t
 REQ_RESPONSE = Histogram('block_response_time',
                          'Time to respond to a request')
 
-HTTP_ERROR = Counter('block_access_denied', 'Number of requests that received a 403', ['reason'])
+HTTP_ERROR = Counter('block_access_denied', 'Number of requests that received a HTTP error response', ['reason'])
+CONTENT_LENGTH_ERROR = Counter('content_length_error', 'Number of requests that were terminated due to too large '
+                                                       'Content-Length')
 
 COUNT_AUTH_CACHE_HITS = Counter('block_auth_cache_hits', 'Number of cache hits for auth requests')
 COUNT_AUTH_CACHE_SETS = Counter('block_auth_cache_sets', 'Number of cache sets for auth requests')

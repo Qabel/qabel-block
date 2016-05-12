@@ -163,6 +163,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.remaining_upload_size -= len(chunk)
         if self.remaining_upload_size < 0:
             self.temp.close()
+            mon.CONTENT_LENGTH_ERROR.inc()
             raise HTTPError(400, reason="Content-Length too large")
         self.temp.write(chunk)
 
