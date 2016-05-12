@@ -111,7 +111,11 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.finish_database()
 
     def write_error(self, status_code, **kwargs):
-        mon.COUNT_ACCESS_DENIED.inc()
+        if 'exc_info' in kwargs:
+            _, exc, _ = kwargs['exc_info']
+            mon.HTTP_ERROR.labels(str(exc)).inc()
+        else:
+            mon.HTTP_ERROR.labels('unknown').inc()
         super().write_error(status_code, **kwargs)
 
     async def _authorize_request(self):
@@ -159,7 +163,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.remaining_upload_size -= len(chunk)
         if self.remaining_upload_size < 0:
             self.temp.close()
-            raise HTTPError(403, reason="Content-Length too large")
+            raise HTTPError(400, reason="Content-Length too large")
         self.temp.write(chunk)
 
     @gen.coroutine
