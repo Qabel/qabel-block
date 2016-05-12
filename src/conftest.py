@@ -180,9 +180,12 @@ def app(cache, pg_pool):
     options.dummy_log = prev_log
 
 
-@pytest.fixture()
+@pytest.yield_fixture()
 def app_options():
-    return options
+    original_settings = dict(options.items())
+    yield options
+    for key, value in original_settings.items():
+        setattr(options, key, value)
 
 
 @pytest.yield_fixture()

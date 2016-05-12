@@ -24,7 +24,7 @@ def test_quota_reached_meta_upload_granted(quota_policy):
     assert not quota_policy.upload(True, 150 * 1024, False, True)
 
 
-def test_traffic_limit(quota_policy):
-    quota_policy.TRAFFIC_THRESHOLD = 10
+def test_traffic_limit(quota_policy, monkeypatch):
+    monkeypatch.setattr(quota_policy, 'TRAFFIC_THRESHOLD', 10)
     assert quota_policy.download(10)
     assert not quota_policy.download(11)
