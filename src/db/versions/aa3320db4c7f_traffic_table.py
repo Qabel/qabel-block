@@ -33,7 +33,17 @@ def upgrade():
         'traffic_month_constraint', 'traffic',
         "date_trunc('month', traffic_month) = traffic_month",
     )
+    op.execute("INSERT INTO traffic(user_id, traffic, traffic_month) "
+               "SELECT user_id, download_traffic, date_trunc('month', current_date) "
+               "FROM users")
+    op.drop_column('users', 'download_traffic')
 
 
 def downgrade():
+    op.add_column('users',
+                  sa.Column('download_traffic', sa.BIGINT, default=0))
+    op.execute('UPDATE users '
+               'SET download_traffic = traffic.traffic '
+               'FROM traffic '
+               'WHERE traffic.user_id = users.user_id')
     op.drop_table('traffic')
