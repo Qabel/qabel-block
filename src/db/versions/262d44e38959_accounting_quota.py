@@ -22,6 +22,6 @@ def upgrade():
 
 
 def downgrade():
-    op.add_column('users', 'max_quota', type=sa.BIGINT)
-    op.add_column('users', 'max_quota', server_default='2147483648')
+    op.add_column('users',
+                  sa.Column('max_quota', sa.BIGINT, default=2147483648))
     op.execute('UPDATE users SET max_quota = 2147483648')
