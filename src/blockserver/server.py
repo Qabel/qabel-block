@@ -98,6 +98,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.auth_callback = get_auth_cls()(self.cache)
         self.database_pool = database_pool
         self._connection = None
+        self.temp = None
 
     async def prepare(self):
         self._start_time = perf_counter()
@@ -111,7 +112,11 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.finish_database()
 
     def write_error(self, status_code, **kwargs):
-        mon.COUNT_ACCESS_DENIED.inc()
+        if 'exc_info' in kwargs:
+            _, exc, _ = kwargs['exc_info']
+            mon.HTTP_ERROR.labels(str(exc)).inc()
+        else:
+            mon.HTTP_ERROR.labels('unknown').inc()
         super().write_error(status_code, **kwargs)
 
     async def _authorize_request(self):
@@ -159,7 +164,8 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.remaining_upload_size -= len(chunk)
         if self.remaining_upload_size < 0:
             self.temp.close()
-            raise HTTPError(403, reason="Content-Length too large")
+            mon.CONTENT_LENGTH_ERROR.inc()
+            raise HTTPError(400, reason="Content-Length too large")
         self.temp.write(chunk)
 
     @gen.coroutine
@@ -231,7 +237,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
 
     def on_finish(self):
         super().on_finish()
-        if self.request.method == 'POST':
+        if self.temp:
             self.temp.close()
         mon.REQ_IN_PROGRESS.dec()
         mon.REQ_RESPONSE.observe(perf_counter() - self._start_time)
