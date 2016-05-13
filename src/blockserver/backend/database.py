@@ -5,6 +5,8 @@ from abc import abstractmethod, ABC
 from uuid import uuid4
 from contextlib import contextmanager
 
+from . import util
+
 
 class AbstractUserDatabase(ABC):
 
@@ -90,35 +92,40 @@ class PostgresUserDatabase(AbstractUserDatabase):
     def get_size(self, user_id: int) -> int:
         with self._cur() as cur:
             cur.execute(
-                'SELECT max_quota, size FROM users WHERE user_id = %s',
+                'SELECT size FROM users WHERE user_id = %s',
                 (user_id,))
             result = cur.fetchone()
             if result is None:
                 self.assert_user_exists(user_id)
                 return self.get_size(user_id)
             else:
-                return result
+                return result[0]
 
     def update_traffic(self, prefix: str, amount: int):
         with self._cur() as cur:
             cur.execute(
-                'UPDATE users u SET download_traffic = download_traffic + %s '
-                'FROM prefixes p '
-                'WHERE p.name=%s AND u.user_id = p.user_id',
-                (amount, prefix))
+                'INSERT INTO traffic (traffic, traffic_month, user_id) '
+                'SELECT %s, %s, user_id FROM prefixes WHERE name = %s '
+                'ON CONFLICT (user_id, traffic_month) '
+                'DO '
+                'UPDATE '
+                'SET traffic = traffic.traffic + EXCLUDED.traffic',
+                (amount, util.this_month(), prefix))
 
     def get_traffic(self, user_id: int) -> int:
         with self._cur() as cur:
-            cur.execute('SELECT download_traffic FROM users WHERE user_id = %s', (user_id,))
-            traffic, = cur.fetchone()
+            cur.execute('SELECT traffic FROM traffic WHERE user_id = %s AND traffic_month = %s',
+                        (user_id, util.this_month()))
+            traffic = cur.fetchone()
             if traffic is None:
-                traffic = 0
-            return traffic
+                traffic = 0,
+            return traffic[0]
 
     def get_traffic_by_prefix(self, prefix: str) -> int:
         with self._cur() as cur:
-            cur.execute('SELECT download_traffic FROM users JOIN prefixes USING (user_id)'
-                        'WHERE name = %s', (prefix,))
+            cur.execute('SELECT traffic FROM traffic JOIN prefixes USING (user_id)'
+                        'WHERE name = %s AND traffic_month = %s',
+                        (prefix, util.this_month()))
             result = cur.fetchone()
             if result is None:
                 traffic = 0
@@ -126,40 +133,8 @@ class PostgresUserDatabase(AbstractUserDatabase):
                 traffic, = result
             return traffic
 
-    def set_quota(self, user_id: int, quota: int):
-        with self._cur() as cur:
-            cur.execute(
-                'UPDATE users u SET max_quota = %s '
-                'WHERE u.user_id = %s',
-                (quota, user_id))
-            if cur.rowcount < 1:
-                self.assert_user_exists(user_id)
-                self.set_quota(user_id, quota)
-
-    def get_quota(self, user_id: int) -> int:
-        with self._cur() as cur:
-            cur.execute('SELECT max_quota FROM users WHERE user_id = %s', (user_id,))
-            result = cur.fetchone()
-            if result is None:
-                self.assert_user_exists(user_id)
-                return self.get_quota(user_id)
-            traffic, = result
-            if traffic is None:
-                traffic = 0
-            return traffic
-
-    def quota_reached(self, user_id: int, file_size: int) -> bool:
-        with self._cur() as cur:
-            cur.execute('SELECT (size+%s) >= max_quota FROM users WHERE user_id = %s',
-                        (file_size, user_id,))
-            result = cur.fetchone()
-            if result is None:
-                self.assert_user_exists(user_id)
-                return self.quota_reached(user_id, file_size)
-            reached, = result
-            return reached
-
     def _flush_all(self):
         with self._cur() as cur:
             cur.execute('DELETE FROM users')
             cur.execute('DELETE FROM prefixes')
+            cur.execute('DELETE FROM traffic')

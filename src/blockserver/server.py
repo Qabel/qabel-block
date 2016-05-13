@@ -153,6 +153,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
             raise HTTPError(400, reason="No correct prefix supplied")
 
     def _check_download_traffic(self, db, prefix):
+        # TODO: get traffic quota for the prefix' owner from accounting, compare.
         current_traffic = db.get_traffic_by_prefix(prefix)
         if not QuotaPolicy.download(current_traffic):
             self._quota_error()
@@ -203,7 +204,8 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.finish()
 
     async def _authorize_upload_request(self, file_path, file_size, prefix):
-        quota_reached = (await self.get_database()).quota_reached(self.user.user_id, file_size)
+        used_quota = (await self.get_database()).get_size(self.user.user_id)
+        quota_reached = used_quota + file_size > self.user.quota
         is_block = file_path.startswith('block/')
         old_size = self.transfer.get_size(StorageObject(prefix, file_path))
         if old_size is None:
@@ -309,8 +311,11 @@ class QuotaHandler(AuthorizationMixin, DatabaseMixin, RequestHandler):
     def get(self):
         self.set_status(200)
         db = yield self.get_database()
-        quota, size = db.get_size(self.user.user_id)
-        self.write({'quota': quota, 'size': size})
+        size = db.get_size(self.user.user_id)
+        self.write({
+            'quota': self.user.quota,
+            'size': size
+        })
         self.finish()
 
 

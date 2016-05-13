@@ -8,6 +8,8 @@ from tornado.options import options
 from glinda.testing import services
 from unittest.mock import call
 
+from blockserver.backend.auth import DummyAuth
+
 
 def stat_by_name(stat_name):
     return partial(REGISTRY.get_sample_value, stat_name)
@@ -237,8 +239,9 @@ def test_normal_cycle_with_quota_changes(backend, http_client, path, quota_path,
 
 
 @pytest.mark.gen_test
-def test_quota_reached_and_upload_denied(backend, http_client, block_path, headers, pg_db, user_id, temp_check):
-    pg_db.set_quota(user_id, 0)
+def test_quota_reached_and_upload_denied(backend, http_client, block_path, headers, pg_db, user_id, temp_check,
+                                         monkeypatch):
+    monkeypatch.setattr(DummyAuth, 'QUOTA', 0)
     body = b'Dummy'
     with temp_check:
         response = yield http_client.fetch(block_path, method='POST', body=body, headers=headers, raise_error=False)
@@ -247,18 +250,20 @@ def test_quota_reached_and_upload_denied(backend, http_client, block_path, heade
 
 
 @pytest.mark.gen_test
-def test_quota_reached_but_meta_files_allowed(backend, http_client, path, headers, pg_db, user_id, temp_check):
+def test_quota_reached_but_meta_files_allowed(backend, http_client, path, headers, pg_db, user_id, temp_check,
+                                              monkeypatch):
     body = b'Dummy'
     with temp_check:
         yield http_client.fetch(path, method='POST', body=body, headers=headers)
-        pg_db.set_quota(user_id, 0)
+        monkeypatch.setattr(DummyAuth, 'QUOTA', 0)
         response = yield http_client.fetch(path, method='POST', body=body, headers=headers)
     assert response.code == 204
 
 
 @pytest.mark.gen_test
-def test_quota_reached_meta_files_size_limit(backend, http_client, path, headers, pg_db, user_id, temp_check):
-    pg_db.set_quota(user_id, 0)
+def test_quota_reached_meta_files_size_limit(backend, http_client, path, headers, pg_db, user_id, temp_check,
+                                             monkeypatch):
+    monkeypatch.setattr(DummyAuth, 'QUOTA', 0)
     body = b'+' * 151 * 1024
     with temp_check:
         response = yield http_client.fetch(path, method='POST', body=body, headers=headers,
