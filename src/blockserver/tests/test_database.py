@@ -35,6 +35,14 @@ def test_retrieve_prefixes(pg_db):
     assert set(prefixes) == {p1, p2}
 
 
+def test_prefix_owner(pg_db, user_id, prefix):
+    assert pg_db.get_prefix_owner(prefix) == user_id
+
+
+def test_prefix_owner_nonexistent(pg_db):
+    assert pg_db.get_prefix_owner('1234' * 6) is None
+
+
 def test_nonexistent_prefixes(pg_db):
     assert pg_db.get_prefixes(UID) == []
 

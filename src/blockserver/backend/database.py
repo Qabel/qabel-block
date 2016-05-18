@@ -67,6 +67,14 @@ class PostgresUserDatabase(AbstractUserDatabase):
             except psycopg2.IntegrityError:
                 pass
 
+    def get_prefix_owner(self, prefix: str) -> int:
+        with self._cur() as cur:
+            cur.execute(
+                'SELECT user_id FROM users NATURAL JOIN prefixes WHERE prefixes.name = %s',
+                (prefix,))
+            result = cur.fetchone()
+            return result[0] if result else None
+
     def has_prefix(self, user_id: int, prefix: str) -> bool:
         with self._cur() as cur:
             cur.execute(
@@ -107,8 +115,7 @@ class PostgresUserDatabase(AbstractUserDatabase):
                 'INSERT INTO traffic (traffic, traffic_month, user_id) '
                 'SELECT %s, %s, user_id FROM prefixes WHERE name = %s '
                 'ON CONFLICT (user_id, traffic_month) '
-                'DO '
-                'UPDATE '
+                'DO UPDATE '
                 'SET traffic = traffic.traffic + EXCLUDED.traffic',
                 (amount, util.this_month(), prefix))
 
