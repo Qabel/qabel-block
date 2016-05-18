@@ -144,7 +144,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
                 raise HTTPError(403, reason="Not authorized for this prefix")
 
     async def _authorize_get_request(self, prefix):
-        self._check_download_traffic((await self.get_database()), prefix)
+        await self._check_download_traffic((await self.get_database()), prefix)
 
     async def _get_prefix(self):
         try:
@@ -152,10 +152,15 @@ class FileHandler(DatabaseMixin, RequestHandler):
         except KeyError:
             raise HTTPError(400, reason="No correct prefix supplied")
 
-    def _check_download_traffic(self, db, prefix):
-        # TODO: get traffic quota for the prefix' owner from accounting, compare.
+    async def _check_download_traffic(self, db, prefix):
         current_traffic = db.get_traffic_by_prefix(prefix)
-        if not QuotaPolicy.download(current_traffic):
+        prefix_owner = db.get_prefix_owner(prefix)
+        if prefix_owner is None:
+            return  # prefix does not exist, will be rejected later (TODO: move)
+        permitted_traffic = (await self.auth_callback.get_user(prefix_owner)).traffic_quota
+        if current_traffic > permitted_traffic:
+            # TODO: the download traffic quota should probably be a soft-quota, not hard (i.e. limit bandwidth or
+            # TODO: insert a delay to annoy people [less].)
             self._quota_error()
 
     def _quota_error(self):
