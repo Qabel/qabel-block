@@ -156,7 +156,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
         current_traffic = db.get_traffic_by_prefix(prefix)
         prefix_owner = db.get_prefix_owner(prefix)
         if prefix_owner is None:
-            return  # prefix does not exist, will be rejected later (TODO: move)
+            return  # prefix does not exist, will 404 later
         permitted_traffic = (await self.auth_callback.get_user(prefix_owner)).traffic_quota
         if current_traffic > permitted_traffic:
             # TODO: the download traffic quota should probably be a soft-quota, not hard (i.e. limit bandwidth or
