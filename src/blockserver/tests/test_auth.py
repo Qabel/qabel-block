@@ -28,7 +28,7 @@ def test_dummy_auth():
 @fixture
 def mock_auth(mocker):
     mock = Mock()
-    mocker.patch('blockserver.backend.auth.AccountingServerAuth.request',
+    mocker.patch('blockserver.backend.auth.AccountingServerAuth.request_auth',
                  new=make_coroutine(mock))
     return mock
 
@@ -89,9 +89,9 @@ def test_auth_request(mocker):
     ret = sentinel.ret
     ret.body = b'{"user_id": 0, "active": true, "block_quota": 512, "monthly_traffic_quota": 1024}'
     fetch_mock.return_value = ret
-    response = yield auth.AccountingServerAuth.request(token)
+    response = yield auth.AccountingServerAuth.request_auth(token)
     assert response == auth.User(user_id=0, is_active=True, quota=512, traffic_quota=1024)
-    fetch_mock.assert_called_once_with('{"auth": "Token foobar"}')
+    fetch_mock.assert_called_once_with('{"auth": "Token foobar"}', auth.AccountingServerAuth.auth_url())
 
 
 @pytest.mark.gen_test
@@ -129,7 +129,7 @@ def test_auth_returns_user_object(app, http_client, auth_server):
     body = b'{"user_id": 0, "active": true, "block_quota": 512, "monthly_traffic_quota": 123456789}'
     auth_server.add_response(services.Request('POST', path),
                              services.Response(200, body=body))
-    user = yield auth.AccountingServerAuth.request('foobar')
+    user = yield auth.AccountingServerAuth.request_auth('foobar')
     assert isinstance(user, auth.User)
     assert user.user_id == 0
     assert user.is_active
@@ -143,7 +143,7 @@ def test_auth_returns_inactive_user_object(app, http_client, auth_server):
     body = b'{"user_id": 0, "active": false, "block_quota": 512, "monthly_traffic_quota": 123456789}'
     auth_server.add_response(services.Request('POST', path),
                              services.Response(200, body=body))
-    user = yield auth.AccountingServerAuth.request('foobar')
+    user = yield auth.AccountingServerAuth.request_auth('foobar')
     assert user.user_id == 0
     assert not user.is_active
 

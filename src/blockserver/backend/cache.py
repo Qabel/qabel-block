@@ -38,18 +38,27 @@ class AbstractCache(ABC):
         size = int(size)
         return storage_object._replace(etag=etag, size=size)
 
-    def set_auth(self, authentication_token: str, user: User):
-        if not isinstance(user, User):
-            raise ValueError('Need a User object')
-        self._set(authentication_token,
+    def _set_user(self, key, user):
+        self._set(key,
                   user_id=str(user.user_id).encode(),
                   is_active=str(int(user.is_active)).encode(),
                   quota=str(int(user.quota)).encode(),
                   traffic_quota=str(int(user.traffic_quota)).encode())
-        self._set_expire(authentication_token, AUTH_CACHE_EXPIRE)
+        self._set_expire(key, AUTH_CACHE_EXPIRE)
 
-    def get_auth(self, authentication_token: str) -> int:
-        user_info = self._get(authentication_token, 'user_id', 'is_active', 'quota', 'traffic_quota')
+    def set_auth(self, authentication_token: str, user: User):
+        if not isinstance(user, User):
+            raise ValueError('Need a User object')
+        self._set_user(authentication_token, user)
+        self._set_user('user-%d' % user.user_id, user)
+
+    def set_user(self, user: User):
+        if not isinstance(user, User):
+            raise ValueError('Need a User object')
+        self._set_user('user-%d' % user.user_id, user)
+
+    def _get_user(self, key: str) -> User:
+        user_info = self._get(key, 'user_id', 'is_active', 'quota', 'traffic_quota')
         user_id, is_active, quota, traffic_quota = user_info
         if user_id is None:
             raise KeyError('Element not found')
@@ -57,6 +66,12 @@ class AbstractCache(ABC):
                     is_active=(is_active == b'1'),
                     quota=int(quota.decode()),
                     traffic_quota=int(traffic_quota.decode()))
+
+    def get_auth(self, authentication_token: str) -> User:
+        return self._get_user(authentication_token)
+
+    def get_user(self, user_id: int) -> User:
+        return self._get_user('user-%d' % user_id)
 
     def _storage_key(self, storage_object):
         return self.STORAGE_PREFIX + file_key(storage_object)
