@@ -81,18 +81,17 @@ class AccountingServerAuth:
     @mon.time(mon.WAIT_FOR_AUTH)
     async def request_auth(auth_header: str) -> User:
         return await AccountingServerAuth.api_request({'auth': auth_header},
-                                                      AccountingServerAuth.auth_url())
+                                                      )
 
     @staticmethod
     @mon.time(mon.WAIT_FOR_AUTH)
     async def request_info(user_id: int) -> User:
-        return await AccountingServerAuth.api_request({'id': user_id},
-                                                      AccountingServerAuth.info_url())
+        return await AccountingServerAuth.api_request({'user_id': user_id})
 
     @staticmethod
-    async def api_request(request_data, url):
+    async def api_request(request_data):
         request_body = json.dumps(request_data)
-        response = await AccountingServerAuth.send_request(request_body, url)
+        response = await AccountingServerAuth.send_request(request_body)
         try:
             body = json.loads(response.body.decode('utf-8'))
         except json.JSONDecodeError as e:
@@ -107,9 +106,9 @@ class AccountingServerAuth:
             raise UserNotFound('Invalid response from accounting server')
 
     @staticmethod
-    async def send_request(request_body, url=None):
+    async def send_request(request_body):
         http_client = AsyncHTTPClient()
-        url = url or AccountingServerAuth.auth_url()
+        url = AccountingServerAuth.auth_url()
         try:
             return await http_client.fetch(
                 url, headers={
@@ -128,11 +127,7 @@ class AccountingServerAuth:
 
     @staticmethod
     def auth_url():
-        return options.accounting_host + '/api/v0/auth/'
-
-    @staticmethod
-    def info_url():
-        return options.accounting_host + '/api/v0/auth/info/'
+        return options.accounting_host + '/api/v0/internal/user/'
 
 
 class CacheAuth:
