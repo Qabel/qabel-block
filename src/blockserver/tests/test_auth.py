@@ -95,10 +95,9 @@ def test_auth_request(mocker):
 
 
 @pytest.mark.gen_test
-def test_auth_send_request(app, http_client, auth_server):
-    path = '/api/v0/internal/user/'
+def test_auth_send_request(app, http_client, auth_server, auth_path):
     body = b'{"user_id": 0}'
-    auth_server.add_response(services.Request('POST', path),
+    auth_server.add_response(services.Request('POST', auth_path),
                              services.Response(200, body=body))
     response = yield auth.AccountingServerAuth.send_request('foobar')
     assert response.code == 200
@@ -106,28 +105,25 @@ def test_auth_send_request(app, http_client, auth_server):
 
 
 @pytest.mark.gen_test
-def test_auth_send_request_not_found(app, http_client, auth_server):
-    path = '/api/v0/internal/user/'
-    auth_server.add_response(services.Request('POST', path),
+def test_auth_send_request_not_found(app, http_client, auth_server, auth_path):
+    auth_server.add_response(services.Request('POST', auth_path),
                              services.Response(404))
     with pytest.raises(auth.UserNotFound):
         yield auth.AccountingServerAuth.send_request('foobar')
 
 
 @pytest.mark.gen_test
-def test_auth_send_request_error_propagation(app, http_client, auth_server):
-    path = '/api/v0/internal/user/'
-    auth_server.add_response(services.Request('POST', path),
+def test_auth_send_request_error_propagation(app, http_client, auth_server, auth_path):
+    auth_server.add_response(services.Request('POST', auth_path),
                              services.Response(500))
     with pytest.raises(auth.AuthError):
         yield auth.AccountingServerAuth.send_request('foobar')
 
 
 @pytest.mark.gen_test
-def test_auth_returns_user_object(app, http_client, auth_server):
-    path = '/api/v0/internal/user/'
+def test_auth_returns_user_object(app, http_client, auth_server, auth_path):
     body = b'{"user_id": 0, "active": true, "block_quota": 512, "monthly_traffic_quota": 123456789}'
-    auth_server.add_response(services.Request('POST', path),
+    auth_server.add_response(services.Request('POST', auth_path),
                              services.Response(200, body=body))
     user = yield auth.AccountingServerAuth.request_auth('foobar')
     assert isinstance(user, auth.User)
@@ -138,10 +134,9 @@ def test_auth_returns_user_object(app, http_client, auth_server):
 
 
 @pytest.mark.gen_test
-def test_auth_returns_inactive_user_object(app, http_client, auth_server):
-    path = '/api/v0/internal/user/'
+def test_auth_returns_inactive_user_object(app, http_client, auth_server, auth_path):
     body = b'{"user_id": 0, "active": false, "block_quota": 512, "monthly_traffic_quota": 123456789}'
-    auth_server.add_response(services.Request('POST', path),
+    auth_server.add_response(services.Request('POST', auth_path),
                              services.Response(200, body=body))
     user = yield auth.AccountingServerAuth.request_auth('foobar')
     assert user.user_id == 0
@@ -149,12 +144,11 @@ def test_auth_returns_inactive_user_object(app, http_client, auth_server):
 
 
 @pytest.mark.gen_test
-def test_content_type_header_set(app, http_client, auth_server):
-    path = '/api/v0/internal/user/'
+def test_content_type_header_set(app, http_client, auth_server, auth_path):
     body = b'{"user_id": 0}'
-    auth_server.add_response(services.Request('POST', path),
+    auth_server.add_response(services.Request('POST', auth_path),
                              services.Response(200, body=body))
     response = yield auth.AccountingServerAuth.send_request('foobar')
     assert response.code == 200
-    request = auth_server.get_request(path)
+    request = auth_server.get_request(auth_path)
     assert request.headers['Content-Type'] == 'application/json'
