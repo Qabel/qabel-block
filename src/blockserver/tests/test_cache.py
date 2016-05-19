@@ -30,3 +30,9 @@ def test_auth_cache_basics(cache):
     user_2 = User(2, False, 456, 123789)
     cache.set_auth(AUTH_TOKEN, user_2)
     assert cache.get_auth(AUTH_TOKEN) == user_2
+
+
+def test_auth_cache_old_data(cache):
+    cache._set('some_token', user_id=3, is_active=True)
+    with pytest.raises(KeyError):
+        cache.get_auth('some_token')

@@ -60,7 +60,7 @@ class AbstractCache(ABC):
     def _get_user(self, key: str) -> User:
         user_info = self._get(key, 'user_id', 'is_active', 'quota', 'traffic_quota')
         user_id, is_active, quota, traffic_quota = user_info
-        if user_id is None:
+        if any(attr is None for attr in user_info):
             raise KeyError('Element not found')
         return User(user_id=int(user_id.decode('utf-8')),
                     is_active=(is_active == b'1'),
