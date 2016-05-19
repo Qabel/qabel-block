@@ -12,6 +12,3 @@ class QuotaPolicy:
             return False
         return is_overwrite and file_size < QuotaPolicy.METAFILE_THRESHOLD
 
-    @staticmethod
-    def download(current_traffic):
-        return current_traffic <= QuotaPolicy.TRAFFIC_THRESHOLD

@@ -1,3 +1,6 @@
+import datetime
+
+import psycopg2
 import pytest
 
 from blockserver.backend.database import AbstractUserDatabase, PostgresUserDatabase
@@ -32,6 +35,14 @@ def test_retrieve_prefixes(pg_db):
     assert set(prefixes) == {p1, p2}
 
 
+def test_prefix_owner(pg_db, user_id, prefix):
+    assert pg_db.get_prefix_owner(prefix) == user_id
+
+
+def test_prefix_owner_nonexistent(pg_db):
+    assert pg_db.get_prefix_owner('1234' * 6) is None
+
+
 def test_nonexistent_prefixes(pg_db):
     assert pg_db.get_prefixes(UID) == []
 
@@ -40,20 +51,20 @@ def test_used_space_inc(pg_db, user_id, prefix):
     size = 500
     second_prefix = pg_db.create_prefix(user_id)
     pg_db.update_size(prefix, size)
-    assert pg_db.get_size(user_id)[1] == size
+    assert pg_db.get_size(user_id) == size
 
     pg_db.update_size(second_prefix, size)
-    assert pg_db.get_size(user_id)[1] == size * 2
+    assert pg_db.get_size(user_id) == size * 2
 
 
 def test_used_space_dec(pg_db, user_id, prefix):
     size = 500
     second_prefix = pg_db.create_prefix(user_id)
     pg_db.update_size(prefix, size)
-    assert pg_db.get_size(user_id)[1] == size
+    assert pg_db.get_size(user_id) == size
 
     pg_db.update_size(second_prefix, -size)
-    assert pg_db.get_size(user_id)[1] == 0
+    assert pg_db.get_size(user_id) == 0
 
 
 def test_traffic_for_prefix(pg_db, user_id, prefix):
@@ -61,28 +72,9 @@ def test_traffic_for_prefix(pg_db, user_id, prefix):
     amount = 500
     pg_db.update_traffic(prefix, amount)
     assert pg_db.get_traffic(user_id) == amount
-
-
-def test_quota(pg_db, user_id):
-    assert pg_db.get_quota(user_id) == 2 * 1024**3
-    pg_db.set_quota(user_id, 10)
-    assert pg_db.get_quota(user_id) == 10
-
-
-def test_set_quota(pg_db, user_id):
-    pg_db.set_quota(user_id, 10)
-    assert pg_db.get_quota(user_id) == 10
-
-
-def test_quota_reached(pg_db, user_id, prefix):
-    size = 10
-    assert not pg_db.quota_reached(user_id, size)
-    pg_db.set_quota(user_id, 10)
-    assert not pg_db.quota_reached(user_id, size - 1)
-    assert pg_db.quota_reached(user_id, size)
-    pg_db.update_size(prefix, 10)
-    assert pg_db.quota_reached(user_id, 0)
-    assert pg_db.quota_reached(user_id, size)
+    different_amount = 123456
+    pg_db.update_traffic(prefix, different_amount)
+    assert pg_db.get_traffic(user_id) == amount + different_amount
 
 
 def test_traffic_by_prefix(pg_db, prefix):
@@ -90,16 +82,43 @@ def test_traffic_by_prefix(pg_db, prefix):
     amount = 500
     pg_db.update_traffic(prefix, amount)
     assert pg_db.get_traffic_by_prefix(prefix) == amount
+    different_amount = 123456
+    pg_db.update_traffic(prefix, different_amount)
+    assert pg_db.get_traffic_by_prefix(prefix) == amount + different_amount
 
 
-def test_quota_reached_by_large_file(pg_db, user_id, prefix):
-    size = 3 * 1024**3
-    assert pg_db.quota_reached(user_id, size)
+def test_traffic_by_prefix_and_month(pg_db, prefix, mocker):
+    def normal_cycle():
+        assert pg_db.get_traffic_by_prefix(prefix) == 0
+        amount = 500
+        pg_db.update_traffic(prefix, amount)
+        assert pg_db.get_traffic_by_prefix(prefix) == amount
+    normal_cycle()
+    this_month = mocker.patch('blockserver.backend.util.this_month')
+    today = datetime.date.today()
+    this_month.return_value = today.replace(day=1, month=today.month + 1)
+    normal_cycle()
+
+
+def test_traffic_by_month(pg_db, prefix, mocker, user_id):
+    def normal_cycle():
+        assert pg_db.get_traffic(user_id) == 0
+        amount = 500
+        pg_db.update_traffic(prefix, amount)
+        assert pg_db.get_traffic(user_id) == amount
+    normal_cycle()
+    this_month = mocker.patch('blockserver.backend.util.this_month')
+    today = datetime.date.today()
+    this_month.return_value = today.replace(day=1, month=today.month + 1)
+    normal_cycle()
+
+
+def test_traffic_integrity(pg_db, prefix, mocker):
+    this_month = mocker.patch('blockserver.backend.util.this_month')
+    this_month.return_value = datetime.date.today().replace(day=2)
+    with pytest.raises(psycopg2.IntegrityError):
+        pg_db.update_traffic(prefix, 123)
 
 
 def test_traffic_default(pg_db):
     assert pg_db.get_traffic_by_prefix("non existing prefix") == 0
-
-
-def test_quota_reached_recursion(pg_db):
-    assert not pg_db.quota_reached(1, 1)

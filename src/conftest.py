@@ -81,7 +81,7 @@ def prefix_path(base_url):
 
 @pytest.fixture
 def auth_path():
-    return '/api/v0/auth/'
+    return '/api/v0/internal/user/'
 
 
 @pytest.fixture

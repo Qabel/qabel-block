@@ -22,15 +22,29 @@ class BypassAuth(AuthError):
 
 
 class DummyAuth:
+    QUOTA = 2 * 1024**3
+    TRAFFIC_QUOTA = 20 * 1024**3
 
     def __init__(self, cache_backend):
         pass
 
-    async def auth(self, auth_header: str) -> int:
+    async def auth(self, auth_header: str) -> User:
         if auth_header == 'Token {}'.format(options.dummy_auth):
-            raise BypassAuth(User(user_id=0, is_active=True))
+            raise BypassAuth(User(user_id=0,
+                                  is_active=True,
+                                  quota=self.QUOTA,
+                                  traffic_quota=self.TRAFFIC_QUOTA))
         else:
             raise UserNotFound()
+
+    async def get_user(self, user_id: int) -> User:
+        if user_id == 0:
+            return User(user_id=0,
+                        is_active=True,
+                        quota=self.QUOTA,
+                        traffic_quota=self.TRAFFIC_QUOTA)
+        else:
+            raise UserNotFound
 
 
 class Auth:
@@ -42,8 +56,19 @@ class Auth:
         try:
             user = CacheAuth.auth(self.cache_backend, auth_header)
         except KeyError:
-            user = await AccountingServerAuth.request(auth_header)
+            user = await AccountingServerAuth.request_auth(auth_header)
             CacheAuth.set(self.cache_backend, auth_header, user)
+            mon.COUNT_AUTH_CACHE_SETS.inc()
+        else:
+            mon.COUNT_AUTH_CACHE_HITS.inc()
+        return user
+
+    async def get_user(self, user_id: int) -> User:
+        try:
+            user = CacheAuth.get_user(self.cache_backend, user_id)
+        except KeyError:
+            user = await AccountingServerAuth.request_info(user_id)
+            CacheAuth.set_user(self.cache_backend, user)
             mon.COUNT_AUTH_CACHE_SETS.inc()
         else:
             mon.COUNT_AUTH_CACHE_HITS.inc()
@@ -54,8 +79,18 @@ class AccountingServerAuth:
 
     @staticmethod
     @mon.time(mon.WAIT_FOR_AUTH)
-    async def request(auth_header: str) -> User:
-        request_body = json.dumps({'auth': auth_header})
+    async def request_auth(auth_header: str) -> User:
+        return await AccountingServerAuth.api_request({'auth': auth_header},
+                                                      )
+
+    @staticmethod
+    @mon.time(mon.WAIT_FOR_AUTH)
+    async def request_info(user_id: int) -> User:
+        return await AccountingServerAuth.api_request({'user_id': user_id})
+
+    @staticmethod
+    async def api_request(request_data):
+        request_body = json.dumps(request_data)
         response = await AccountingServerAuth.send_request(request_body)
         try:
             body = json.loads(response.body.decode('utf-8'))
@@ -63,7 +98,10 @@ class AccountingServerAuth:
             raise AuthError(e)
 
         try:
-            return User(user_id=body.get('user_id'), is_active=body.get('active'))
+            return User(user_id=body['user_id'],
+                        is_active=body['active'],
+                        quota=body['block_quota'],
+                        traffic_quota=body['monthly_traffic_quota'])
         except KeyError:
             raise UserNotFound('Invalid response from accounting server')
 
@@ -89,7 +127,7 @@ class AccountingServerAuth:
 
     @staticmethod
     def auth_url():
-        return options.accounting_host + '/api/v0/auth/'
+        return options.accounting_host + '/api/v0/internal/user/'
 
 
 class CacheAuth:
@@ -99,5 +137,13 @@ class CacheAuth:
         return cache_backend.get_auth(auth_header)
 
     @staticmethod
+    def get_user(cache_backend: AbstractCache, user_id: int) -> User:
+        return cache_backend.get_user(user_id)
+
+    @staticmethod
     def set(cache_backend: AbstractCache, auth_header: str, user: User):
         return cache_backend.set_auth(auth_header, user)
+
+    @staticmethod
+    def set_user(cache_backend: AbstractCache, user: User):
+        return cache_backend.set_user(user)

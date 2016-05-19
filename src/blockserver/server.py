@@ -144,7 +144,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
                 raise HTTPError(403, reason="Not authorized for this prefix")
 
     async def _authorize_get_request(self, prefix):
-        self._check_download_traffic((await self.get_database()), prefix)
+        await self._check_download_traffic((await self.get_database()), prefix)
 
     async def _get_prefix(self):
         try:
@@ -152,9 +152,15 @@ class FileHandler(DatabaseMixin, RequestHandler):
         except KeyError:
             raise HTTPError(400, reason="No correct prefix supplied")
 
-    def _check_download_traffic(self, db, prefix):
+    async def _check_download_traffic(self, db, prefix):
         current_traffic = db.get_traffic_by_prefix(prefix)
-        if not QuotaPolicy.download(current_traffic):
+        prefix_owner = db.get_prefix_owner(prefix)
+        if prefix_owner is None:
+            return  # prefix does not exist, will 404 later
+        permitted_traffic = (await self.auth_callback.get_user(prefix_owner)).traffic_quota
+        if current_traffic > permitted_traffic:
+            # TODO: the download traffic quota should probably be a soft-quota, not hard (i.e. limit bandwidth or
+            # TODO: insert a delay to annoy people [less].)
             self._quota_error()
 
     def _quota_error(self):
@@ -203,7 +209,8 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.finish()
 
     async def _authorize_upload_request(self, file_path, file_size, prefix):
-        quota_reached = (await self.get_database()).quota_reached(self.user.user_id, file_size)
+        used_quota = (await self.get_database()).get_size(self.user.user_id)
+        quota_reached = used_quota + file_size > self.user.quota
         is_block = file_path.startswith('block/')
         old_size = self.transfer.get_size(StorageObject(prefix, file_path))
         if old_size is None:
@@ -309,8 +316,11 @@ class QuotaHandler(AuthorizationMixin, DatabaseMixin, RequestHandler):
     def get(self):
         self.set_status(200)
         db = yield self.get_database()
-        quota, size = db.get_size(self.user.user_id)
-        self.write({'quota': quota, 'size': size})
+        size = db.get_size(self.user.user_id)
+        self.write({
+            'quota': self.user.quota,
+            'size': size
+        })
         self.finish()
 
 

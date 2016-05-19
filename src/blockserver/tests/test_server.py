@@ -8,6 +8,8 @@ from tornado.options import options
 from glinda.testing import services
 from unittest.mock import call
 
+from blockserver.backend.auth import DummyAuth
+
 
 def stat_by_name(stat_name):
     return partial(REGISTRY.get_sample_value, stat_name)
@@ -19,12 +21,6 @@ def test_dummy_auth_arbitrary_post(backend, http_client, base_url, headers):
     body = b'Dummy'
     response = yield http_client.fetch(url, method='POST', body=body, headers=headers)
     assert response.code == 204
-
-
-@pytest.mark.gen_test
-def test_not_found(backend, http_client, path):
-    response = yield http_client.fetch(path, raise_error=False)
-    assert response.code == 404
 
 
 @pytest.mark.gen_test
@@ -118,7 +114,8 @@ def test_auth_backend_called(app, cache, http_client, path, auth_path, headers, 
     body = b'Dummy'
     _, prefix, file_name = file_path.split('/')
     auth_server.add_response(services.Request('POST', auth_path),
-                             services.Response(200, body=b'{"user_id": 0, "active":true}'))
+                             services.Response(200, body=b'{"user_id": 0, "active": true,'
+                                                         b'"block_quota": 123, "monthly_traffic_quota": 789}'))
     response = yield http_client.fetch(path, method='POST', body=body, headers=headers,
                                        raise_error=False)
     auth_request = auth_server.get_request(auth_path)
@@ -186,7 +183,8 @@ def test_log_and_monitoring(app, mocker, http_client, path, auth_path, headers,
     size = len(body)
     _, prefix_name, file_name = file_path.split('/')
     auth_server.add_response(services.Request('POST', auth_path),
-                             services.Response(200, body=b'{"user_id": 0, "active":true}'))
+                             services.Response(200, body=b'{"user_id": 0, "active": true,'
+                                                         b'"block_quota": 123, "monthly_traffic_quota": 789}'))
     yield http_client.fetch(path, method='POST', body=body, headers=headers)
     quota = mon_quota({'type': 'increase'})
     assert quota - quota_before == size
@@ -241,8 +239,9 @@ def test_normal_cycle_with_quota_changes(backend, http_client, path, quota_path,
 
 
 @pytest.mark.gen_test
-def test_quota_reached_and_upload_denied(backend, http_client, block_path, headers, pg_db, user_id, temp_check):
-    pg_db.set_quota(user_id, 0)
+def test_quota_reached_and_upload_denied(backend, http_client, block_path, headers, pg_db, user_id, temp_check,
+                                         monkeypatch):
+    monkeypatch.setattr(DummyAuth, 'QUOTA', 0)
     body = b'Dummy'
     with temp_check:
         response = yield http_client.fetch(block_path, method='POST', body=body, headers=headers, raise_error=False)
@@ -251,18 +250,20 @@ def test_quota_reached_and_upload_denied(backend, http_client, block_path, heade
 
 
 @pytest.mark.gen_test
-def test_quota_reached_but_meta_files_allowed(backend, http_client, path, headers, pg_db, user_id, temp_check):
+def test_quota_reached_but_meta_files_allowed(backend, http_client, path, headers, pg_db, user_id, temp_check,
+                                              monkeypatch):
     body = b'Dummy'
     with temp_check:
         yield http_client.fetch(path, method='POST', body=body, headers=headers)
-        pg_db.set_quota(user_id, 0)
+        monkeypatch.setattr(DummyAuth, 'QUOTA', 0)
         response = yield http_client.fetch(path, method='POST', body=body, headers=headers)
     assert response.code == 204
 
 
 @pytest.mark.gen_test
-def test_quota_reached_meta_files_size_limit(backend, http_client, path, headers, pg_db, user_id, temp_check):
-    pg_db.set_quota(user_id, 0)
+def test_quota_reached_meta_files_size_limit(backend, http_client, path, headers, pg_db, user_id, temp_check,
+                                             monkeypatch):
+    monkeypatch.setattr(DummyAuth, 'QUOTA', 0)
     body = b'+' * 151 * 1024
     with temp_check:
         response = yield http_client.fetch(path, method='POST', body=body, headers=headers,
