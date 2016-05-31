@@ -11,7 +11,7 @@ Installation:
 	python run.py
 
 
-The server needs a postgresql (>=9.4) database that needs to me initialized by
+The server needs a postgresql (>=9.5) database that needs to me initialized by
 
 	alembic -x "url=postgresql://username:password@localhost/dbname" upgrade head
 
