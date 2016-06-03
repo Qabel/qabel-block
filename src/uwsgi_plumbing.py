@@ -32,6 +32,7 @@ pyargv=--dummy --debug --dummy-auth=MAGICFAIRY
 $ uwsgi uwsgi-block.ini
 """
 
+import json
 import logging.config
 import socket
 import sys
@@ -58,6 +59,10 @@ if len(sys.argv) == 2 and not sys.argv[1].startswith('--'):
     options.parse_config_file(sys.argv[1])
 else:
     options.parse_command_line()
+
+with open(options.logging_config, 'r') as conf:
+    conf_dictionary = json.load(conf)
+    logging.config.dictConfig(conf_dictionary)
 
 # TODO: handle signals
 # SIGINT = destroy
