@@ -3,6 +3,8 @@ Plumbing to bolt tornado onto uWSGI while retaining asynchronous request handlin
 
 It takes the same options as the run.py script, but here these are passed with the --pyargv uWSGI option.
 
+The --prometheus-port option is the _base_ port. Each worker uses it's own port (prometheus_port + worker_id).
+
 Examples:
 
 Run locally in full-dummy mode (assuming cwd==src):
@@ -43,15 +45,23 @@ from tornado.options import options
 from tornado.ioloop import IOLoop
 from tornado.httpserver import HTTPServer
 
+from prometheus_client import start_http_server
+
 from blockserver.server import make_app
 
 
 def init(fd):
+    worker_id = uwsgi.worker_id()
     application = make_app(debug=options.debug)
     server = HTTPServer(application, xheaders=True)
     sock = socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM)
     server.add_sockets([sock])
-    print('uwsgi plumber reporting for duty on uWSGI worker %s' % uwsgi.worker_id())
+
+    if options.prometheus_port:
+        prometheus_port = options.prometheus_port + worker_id
+        print('starting prometheus server on port %d' % prometheus_port)
+        start_http_server(prometheus_port)
+    print('uwsgi plumber reporting for duty on uWSGI worker %s' % worker_id)
 
 
 # Parse command line
