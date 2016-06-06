@@ -65,9 +65,9 @@ def spawn_on_socket(fd):
 
     if options.prometheus_port:
         prometheus_port = options.prometheus_port + worker_id
-        print('starting prometheus server on port %d' % prometheus_port)
+        uwsgi.log('starting prometheus server on port %d' % prometheus_port)
         start_http_server(prometheus_port)
-    print('uwsgi plumber reporting for duty on uWSGI worker %s' % worker_id)
+    uwsgi.log('uwsgi plumber reporting for duty on uWSGI worker %s' % worker_id)
 
 
 def stop_ioloop(sig, frame):
@@ -83,7 +83,7 @@ def apply_config_dict(config_dict, prefix=''):
             continue
         name = name[len(prefix):]
         if name not in options:
-            print('Invalid block_ server option in uWSGI config file: {}{}'.format(prefix, name))
+            uwsgi.log('Invalid block_ server option in uWSGI config file: {}{}'.format(prefix, name))
             sys.exit(1)
         options._options[name].parse(value.decode())
 
@@ -118,4 +118,4 @@ for fd in uwsgi.sockets:
 loop = IOLoop.current()
 loop.set_blocking_log_threshold(1)
 loop.start()
-print('Worker %s dead.' % uwsgi.worker_id())
+uwsgi.log('Worker %s dead.' % uwsgi.worker_id())
