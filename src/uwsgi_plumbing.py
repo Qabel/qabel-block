@@ -108,9 +108,8 @@ parse_arguments(sys.argv)
 
 configure_logging()
 
-# TODO: handle signals
-# SIGHUP = graceful reload
 signal.signal(signal.SIGINT, stop_ioloop)
+signal.signal(signal.SIGHUP, stop_ioloop)
 
 # spawn a handler for every uWSGI socket
 for fd in uwsgi.sockets:
