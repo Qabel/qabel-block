@@ -195,6 +195,9 @@ class FileHandler(DatabaseMixin, RequestHandler):
 
     @gen.coroutine
     def post(self, prefix, file_path):
+        if not self.check_post_etag(prefix, file_path, self.request.headers.get('If-Match')):
+            return
+
         file_size = self.temp.tell()
         yield self._authorize_upload_request(file_path, file_size, prefix)
         self.finish_database()
@@ -207,6 +210,21 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.set_status(204)
         self.set_header('ETag', storage_object.etag)
         self.finish()
+
+    def check_post_etag(self, prefix, file_path, etag):
+        if not etag:
+            return True
+        stored_object = self.transfer.meta(StorageObject(prefix, file_path))
+        if not stored_object:
+            self.set_status(412, reason='If-Match ETag did not match: object does not exist.')
+            self.finish()
+            return False
+        elif stored_object.etag != etag:
+            self.set_status(412, reason='If-Match ETag did not match stored object')
+            self.set_header('ETag', stored_object.etag)
+            self.finish()
+            return False
+        return True
 
     async def _authorize_upload_request(self, file_path, file_size, prefix):
         used_quota = (await self.get_database()).get_size(self.user.user_id)

@@ -51,6 +51,10 @@ class AbstractTransfer(ABC):
         """Retrieve file, returns StorageObject with file-like StorageObject.fd"""
 
     @abstractmethod
+    def meta(self, storage_object: StorageObject):
+        """Retrieve file metadata, return StorageObject with size and etag set. Return None if the object doesn't exist."""
+
+    @abstractmethod
     def delete(self, storage_object: StorageObject) -> int:
         pass
 
@@ -128,6 +132,21 @@ class S3Transfer(AbstractTransfer):
             size = response['ContentLength']
             return storage_object._replace(fd=response['Body'], etag=response['ETag'], size=size)
 
+    @mon.TIME_IN_TRANSFER_META.time()
+    def meta(self, storage_object: StorageObject):
+        try:
+            cached = self._from_cache(storage_object)
+        except KeyError:
+            with mon.SUMMARY_S3_REQUESTS.time():
+                obj = self.s3.Object(BUCKET, file_key(storage_object))
+                etag, size = self._get_meta_info(obj)
+                if etag is not None:
+                    meta_object = storage_object._replace(size=size, etag=etag)
+                    self._to_cache(meta_object)
+                    return meta_object
+        else:
+            return cached
+
     @mon.TIME_IN_TRANSFER_DELETE.time()
     def delete(self, storage_object):
         obj = self.s3.Object(BUCKET, file_key(storage_object))
@@ -196,6 +215,9 @@ class DummyTransfer(AbstractTransfer):
             return storage_object._replace(fd=None)
         else:
             return object._replace(fd=open(object.local_file, 'rb'))
+
+    def meta(self, storage_object: StorageObject):
+        return files.get(file_key(storage_object))
 
     def delete(self, storage_object: StorageObject):
         try:

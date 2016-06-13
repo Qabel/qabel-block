@@ -79,6 +79,41 @@ def test_etag_set_on_post(backend, http_client, path, headers):
 
 
 @pytest.mark.gen_test
+def test_etag_post_if_match_aborts_on_non_existing_file(backend, http_client, path, headers):
+    headers['If-Match'] = 'something i just made up'
+    response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers, raise_error=False)
+    assert response.code == 412
+    assert 'ETag' not in response.headers
+
+
+@pytest.mark.gen_test
+def test_etag_post_if_match_aborts_on_mismatch(backend, http_client, path, headers):
+    response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers)
+    headers['If-Match'] = response.headers['ETag'] + 'something i just made up'
+    response = yield http_client.fetch(path, method='POST', body=b'OtherDummy', headers=headers, raise_error=False)
+    assert response.code == 412
+    del headers['If-Match']
+    headers['If-None-Match'] = response.headers['Etag']
+    response = yield http_client.fetch(path, method='GET', headers=headers, raise_error=False)
+    assert response.code == 304
+
+
+@pytest.mark.gen_test
+def test_etag_post_if_match(backend, http_client, path, headers):
+    response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers)
+    headers['If-Match'] = response.headers['ETag']
+    response = yield http_client.fetch(path, method='POST', body=b'OtherDummy', headers=headers)
+    assert response.code == 204
+    stored_etag = response.headers['ETag']
+    response = yield http_client.fetch(path, method='GET', headers=headers)
+    assert response.body == b'OtherDummy'
+    del headers['If-Match']
+    headers['If-None-Match'] = stored_etag
+    response = yield http_client.fetch(path, method='GET', headers=headers, raise_error=False)
+    assert response.code == 304
+
+
+@pytest.mark.gen_test
 def test_etag_set_on_get(backend, http_client, path, headers, temp_check):
     response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers)
     etag = response.headers['ETag']
