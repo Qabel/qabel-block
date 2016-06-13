@@ -14,6 +14,8 @@ TIME_IN_TRANSFER_STORE = Histogram('block_wait_for_transfer_store',
                                    'Time spent storing a file')
 TIME_IN_TRANSFER_RETRIEVE = Histogram('block_wait_for_transfer_retrieve',
                                       'Time spent retrieving a file')
+TIME_IN_TRANSFER_META = Histogram('block_wait_for_transfer_meta',
+                                  'Time spent retrieving meta-data (HEAD) of a file')
 TIME_IN_TRANSFER_DELETE = Histogram('block_wait_for_transfer_delete',
                                     'Time spent deleting a file')
 

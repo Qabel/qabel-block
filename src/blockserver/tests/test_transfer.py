@@ -60,3 +60,22 @@ def test_get_size_does_not_corrupt_cache(cache, transfer, testfile):
     transfer.store(storage_object)
     cache.flush()
     transfer.get_size(StorageObject('foo', 'baz'))
+
+
+def test_meta(testfile, cache, transfer):
+    size = os.path.getsize(testfile)
+    named_object = StorageObject('fus-roh', 'bar')
+    transfer.delete(named_object)  # XXX tests should clean up
+    storage_object = named_object._replace(local_file=testfile)
+    assert transfer.meta(named_object) is None
+
+    uploaded, _ = transfer.store(storage_object)
+
+    meta = transfer.meta(named_object)
+    assert meta.size == size
+    assert meta.size == uploaded.size
+    assert meta.etag == uploaded.etag
+
+
+def test_meta_non_existing_file(cache, transfer):
+    assert transfer.meta(StorageObject('making-things', 'up')) is None
