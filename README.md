@@ -33,11 +33,11 @@ option accordingly.
 	[boto docs](https://boto3.readthedocs.io/en/latest/guide/quickstart.html#configuration)
 	document details and alternatives.
 
-      src$ py.test
+        src$ py.test
 
 - The server directly
 
-      src$ python run.py <options>
+        src$ python run.py <options>
 
 - The server in the uWSGI application server: see `src/uwsgi_plumbing.py`. Read the part about how you pass options
   to the server.
@@ -48,14 +48,14 @@ Available storage backends:
 
 - S3
 
-  S3 is the default and requires AWS credentials in `~/.aws`, the
-  [boto docs](https://boto3.readthedocs.io/en/latest/guide/quickstart.html#configuration) document details and
-  alternatives.
+    S3 is the default and requires AWS credentials in `~/.aws`, the
+    [boto docs](https://boto3.readthedocs.io/en/latest/guide/quickstart.html#configuration) document details and
+    alternatives.
 
 - Local storage
 
-  Local storage requires nothing special, just a file system. The option is `--local-storage` (on the command line)
-  and takes the directory to store files in as a sole parameter
+    Local storage requires nothing special, just a file system. The option is `--local-storage` (on the command line)
+    and takes the directory to store files in as a sole parameter.
 
     Note: ETags are currently generated from the mtime, therefore the
     filesystem should support high resolution (nanosecond) timestamps for
