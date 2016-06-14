@@ -20,7 +20,7 @@ The server needs a PostgreSQL (>=9.5) database that needs to me initialized by
 	alembic -x "url=postgresql://username:password@localhost/dbname" upgrade head
 
 Note: If the DSN for your PostgreSQL is different, then you need to adjust it both for Alembic and set the `--psql-dsn`
-option accordingly.
+server option accordingly.
 
 ## Running
 
@@ -67,32 +67,7 @@ Available storage backends:
 
 (from `python run.py --help`)
 
-    Tornado Logging options:
-
-      --log-file-max-size              max size of log files before rollover
-                                       (default 100000000)
-      --log-file-num-backups           number of log files to keep (default 10)
-      --log-file-prefix=PATH           Path prefix for log files. Note that if you
-                                       are running multiple tornado processes,
-                                       log_file_prefix must be different for each
-                                       of them (e.g. include the port number)
-      --log-rotate-interval            The interval value of timed rotating
-                                       (default 1)
-      --log-rotate-mode                The mode of rotating files(time or size)
-                                       (default size)
-      --log-rotate-when                specify the type of TimedRotatingFileHandler
-                                       interval other options:('S', 'M', 'H', 'D',
-                                       'W0'-'W6') (default midnight)
-      --log-to-stderr                  Send log output to stderr (colorized if
-                                       possible). By default use stderr if
-                                       --log_file_prefix is not set and no other
-                                       logging is configured.
-      --logging=debug|info|warning|error|none
-                                       Set the Python log level. If 'none', tornado
-                                       won't touch the logging configuration.
-                                       (default info)
-
-    Blocks server options:
+    Block server options:
 
       --accounting-host                Base url to the accounting server (default
                                        http://localhost:8000)
@@ -129,3 +104,28 @@ Available storage backends:
                                        localhost)
       --redis-port                     Port of the redis server (default 6379)
       --transfers                      Thread pool size for transfers (default 10)
+
+    Tornado Logging options:
+
+      --log-file-max-size              max size of log files before rollover
+                                       (default 100000000)
+      --log-file-num-backups           number of log files to keep (default 10)
+      --log-file-prefix=PATH           Path prefix for log files. Note that if you
+                                       are running multiple tornado processes,
+                                       log_file_prefix must be different for each
+                                       of them (e.g. include the port number)
+      --log-rotate-interval            The interval value of timed rotating
+                                       (default 1)
+      --log-rotate-mode                The mode of rotating files(time or size)
+                                       (default size)
+      --log-rotate-when                specify the type of TimedRotatingFileHandler
+                                       interval other options:('S', 'M', 'H', 'D',
+                                       'W0'-'W6') (default midnight)
+      --log-to-stderr                  Send log output to stderr (colorized if
+                                       possible). By default use stderr if
+                                       --log_file_prefix is not set and no other
+                                       logging is configured.
+      --logging=debug|info|warning|error|none
+                                       Set the Python log level. If 'none', tornado
+                                       won't touch the logging configuration.
+                                       (default info)
