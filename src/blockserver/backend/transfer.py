@@ -176,29 +176,28 @@ class LocalTransfer(AbstractTransfer):
         target_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Three ways we create the final file:
-        if new_size != 0:
-            try:
-                # (1) just rename(2) it (fast: no data copy, but only inside the same FS)
-                os.rename(storage_object.local_file, str(target_path))
-                # The contract is that the file still has to exist
-                open(storage_object.local_file, 'wb').close()
-            except OSError as os_error:
-                if os_error.errno in [errno.ENOTSUP, errno.EXDEV]:
-                    # (2) If that didn't work, copy to temporary ...
-                    fd, new_file = tempfile.mkstemp(dir=str(target_path.parent))
-                    with open(storage_object.local_file, 'rb') as input_file, open(fd, 'wb') as output_file:
-                        shutil.copyfileobj(input_file, output_file)
-                    #     ... and rename(2) the temporary
-                    Path(new_file).replace(target_path)
-                else:
-                    raise
-        else:
-            # (3) If it's empty, we just touch() it
-            target_path.touch()
+        try:
+            # (1) just rename(2) it (fast: no data copy, but only inside the same FS)
+            etag = os.stat(storage_object.local_file).st_mtime_ns
+            os.rename(storage_object.local_file, str(target_path))
+            # The contract is that the file still has to exist
+            open(storage_object.local_file, 'wb').close()
+        except OSError as os_error:
+            if os_error.errno in [errno.ENOTSUP, errno.EXDEV]:
+                # (2) If that didn't work, copy to temporary ...
+                fd, new_file = tempfile.mkstemp(dir=str(target_path.parent))
+                with open(storage_object.local_file, 'rb') as input_file, open(fd, 'wb') as output_file:
+                    shutil.copyfileobj(input_file, output_file)
+                #     ... and rename(2) the temporary
+                new_path = Path(new_file)
+                etag = new_path.stat().st_mtime_ns
+                new_path.replace(target_path)
+            else:
+                raise
         new_object = storage_object._replace(
             local_file=str(target_path),
             size=new_size,
-            etag=str(target_path.stat().st_mtime_ns))  # XXX: better identity? MD5/Blake2 -> cache in file xattrs
+            etag=str(etag))
         self._to_cache(new_object)
         return new_object, new_size - old_size
 

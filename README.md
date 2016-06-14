@@ -57,6 +57,10 @@ Available storage backends:
   Local storage requires nothing special, just a file system. The option is `--local-storage` (on the command line)
   and takes the directory to store files in as a sole parameter
 
+    Note: ETags are currently generated from the mtime, therefore the
+    filesystem should support high resolution (nanosecond) timestamps for
+    production systems. I.e. no OSX, FAT etc.
+
 - Dummy (temporary), `--dummy`, requires no parameters and is an amnesiac.
 
 ## Options reference
