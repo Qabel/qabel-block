@@ -1,6 +1,7 @@
 from typing import Tuple, Union, NamedTuple
 
 import boto3
+import errno
 import tempfile
 import random
 import os
@@ -157,45 +158,38 @@ class S3Transfer(AbstractTransfer):
         return size
 
 
-files = {}
-
-
 class LocalTransfer(AbstractTransfer):
 
     def __init__(self, basedir, cache):
         super().__init__(cache)
-        self.basedir = basedir
+        self.basepath = Path(basedir)
 
     def get_size(self, storage_object: StorageObject) -> int:
-        try:
-            cached = self._from_cache(storage_object)
-        except KeyError:
-            try:
-                return os.path.getsize(
-                    files[file_key(storage_object)].local_file)
-            except KeyError:
-                return None
-        else:
-            return cached.size
+        return getattr(self.meta(storage_object), 'size', 0)
 
     def store(self, storage_object: StorageObject) -> Tuple[StorageObject, int]:
         old_size = self.get_size(storage_object)
         if old_size is None:
             old_size = 0
         new_size = os.path.getsize(storage_object.local_file)
-        new_path = os.path.join(self.basedir, file_key(storage_object))
-        dirname = os.path.dirname(new_path)
-        os.makedirs(dirname, exist_ok=True)
+        new_path = self.basepath / file_key(storage_object)
+        new_path.parent.mkdir(parents=True, exist_ok=True)
         if new_size != 0:
-            shutil.copyfile(storage_object.local_file, new_path)
+            new_file = str(new_path)
+            try:
+                os.link(storage_object.local_file, new_file)
+            except OSError as os_error:
+                if os_error.errno in [errno.ENOTSUP, errno.EXDEV]:
+                    shutil.copyfile(storage_object.local_file, new_file)
+                else:
+                    raise
         else:
-            Path(new_path).touch()
+            new_path.touch()
         new_object = storage_object._replace(
-            local_file=new_path,
+            local_file=str(new_path),
             size=new_size,
-            etag=str(random.randint(1, 20000)))
+            etag=str(new_path.stat().st_mtime_ns))  # XXX: better identity? MD5/Blake2 -> cache in file xattrs
         self._to_cache(new_object)
-        files[file_key(storage_object)] = new_object
         return new_object, new_size - old_size
 
     def retrieve(self, storage_object: StorageObject) -> StorageObject:
@@ -207,20 +201,40 @@ class LocalTransfer(AbstractTransfer):
             if cached.etag == storage_object.etag:
                 return storage_object._replace(fd=None)
 
+        path = self.basepath / file_key(storage_object)
         try:
-            object = files[file_key(storage_object)]
-        except KeyError:
+            st = path.stat()
+        except FileNotFoundError:
             return None
+        object = storage_object._replace(size=st.st_size, etag=str(st.st_mtime_ns))
         if storage_object.etag == object.etag:
             return storage_object._replace(fd=None)
         else:
-            return object._replace(fd=open(object.local_file, 'rb'))
+            return object._replace(fd=path.open('rb'))
 
     def meta(self, storage_object: StorageObject):
-        return files.get(file_key(storage_object))
+        try:
+            cached = self._from_cache(storage_object)
+        except KeyError:
+            path = self.basepath / file_key(storage_object)
+            try:
+                st = path.stat()
+            except FileNotFoundError:
+                return None
+            object = storage_object._replace(size=st.st_size, etag=str(st.st_mtime_ns))
+            self._to_cache(object)
+            return object
+        else:
+            return cached
 
     def delete(self, storage_object: StorageObject):
+        path = self.basepath / file_key(storage_object)
         try:
-            return os.path.getsize(files.pop(file_key(storage_object)).local_file)
-        except KeyError:
+            st = path.stat()
+        except FileNotFoundError:
             return 0
+        try:
+            path.unlink()
+        except OSError:
+            return 0  # raced delete
+        return st.st_size

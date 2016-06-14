@@ -2,6 +2,7 @@ import functools
 import os
 import pytest
 import random
+import shutil
 import string
 import tempfile
 import traceback
@@ -192,9 +193,13 @@ def app_options():
 def transfer(request, cache, tmpdir):
     transfer_backend = request.param
     if transfer_backend == 'dummy':
-        transfer_module.files = {}
-        yield transfer_module.LocalTransfer(str(tmpdir), cache)
-        transfer_module.files = {}
+        tmpdir = str(tmpdir)
+        shutil.rmtree(tmpdir)
+        yield transfer_module.LocalTransfer(tmpdir, cache)
+        try:
+            shutil.rmtree(tmpdir)
+        except OSError:
+            pass
     if transfer_backend == 's3':
         yield transfer_module.S3Transfer(cache)
 
