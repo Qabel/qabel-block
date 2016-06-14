@@ -37,6 +37,8 @@ define('accounting_host',
        help="Base url to the accounting server", default="http://localhost:8000")
 define('dummy',
        help="Use a local and temporary storage backend instead of s3 backend", default=False)
+define('local_storage',
+       help='Store files locally in *specified directory* instead of S3', default='')
 define('dummy_log', help="Instead of calling the accounting server for logging, log to stdout",
        default=False)
 define('dummy_cache', help="Use an in memory cache instead of redis",
@@ -387,7 +389,11 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
                 return partial(cache.RedisCache, host=options.redis_host, port=options.redis_port)
 
     def get_transfer_cls():
-        return LocalTransfer if options.dummy else S3Transfer
+        if options.dummy:
+            return partial(LocalTransfer, tempfile.mkdtemp())
+        if options.local_storage:
+            return partial(LocalTransfer, options.local_storage)
+        return S3Transfer
 
     if database_pool is None:
         database_pool = SimpleConnectionPool(1, 20, dsn=options.psql_dsn)

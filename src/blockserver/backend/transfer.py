@@ -162,9 +162,9 @@ files = {}
 
 class LocalTransfer(AbstractTransfer):
 
-    def __init__(self, cache):
+    def __init__(self, basedir, cache):
         super().__init__(cache)
-        self._tempdir = tempfile.mkdtemp()
+        self.basedir = basedir
 
     def get_size(self, storage_object: StorageObject) -> int:
         try:
@@ -183,7 +183,7 @@ class LocalTransfer(AbstractTransfer):
         if old_size is None:
             old_size = 0
         new_size = os.path.getsize(storage_object.local_file)
-        new_path = os.path.join(self._tempdir, file_key(storage_object))
+        new_path = os.path.join(self.basedir, file_key(storage_object))
         dirname = os.path.dirname(new_path)
         os.makedirs(dirname, exist_ok=True)
         if new_size != 0:
