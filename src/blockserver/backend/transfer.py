@@ -160,7 +160,7 @@ class S3Transfer(AbstractTransfer):
 files = {}
 
 
-class DummyTransfer(AbstractTransfer):
+class LocalTransfer(AbstractTransfer):
 
     def __init__(self, cache):
         super().__init__(cache)

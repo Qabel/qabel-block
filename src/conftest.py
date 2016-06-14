@@ -193,7 +193,7 @@ def transfer(request, cache):
     transfer_backend = request.param
     if transfer_backend == 'dummy':
         transfer_module.files = {}
-        yield transfer_module.DummyTransfer(cache)
+        yield transfer_module.LocalTransfer(cache)
         transfer_module.files = {}
     if transfer_backend == 's3':
         yield transfer_module.S3Transfer(cache)

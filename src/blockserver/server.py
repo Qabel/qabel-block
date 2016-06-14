@@ -16,7 +16,7 @@ from tornado.options import define, options
 from tornado.web import Application, RequestHandler, stream_request_body, Finish, HTTPError
 
 from blockserver.backend import cache, auth
-from blockserver.backend.transfer import StorageObject, S3Transfer, DummyTransfer
+from blockserver.backend.transfer import StorageObject, S3Transfer, LocalTransfer
 from blockserver.backend.database import PostgresUserDatabase
 from psycopg2.pool import SimpleConnectionPool
 from blockserver import monitoring as mon
@@ -387,7 +387,7 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
                 return partial(cache.RedisCache, host=options.redis_host, port=options.redis_port)
 
     def get_transfer_cls():
-        return DummyTransfer if options.dummy else S3Transfer
+        return LocalTransfer if options.dummy else S3Transfer
 
     if database_pool is None:
         database_pool = SimpleConnectionPool(1, 20, dsn=options.psql_dsn)
