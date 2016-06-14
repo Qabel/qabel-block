@@ -172,23 +172,33 @@ class LocalTransfer(AbstractTransfer):
         if old_size is None:
             old_size = 0
         new_size = os.path.getsize(storage_object.local_file)
-        new_path = self.basepath / file_key(storage_object)
-        new_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path = self.basepath / file_key(storage_object)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Three ways we create the final file:
         if new_size != 0:
-            new_file = str(new_path)
             try:
-                os.link(storage_object.local_file, new_file)
+                # (1) just rename(2) it (fast: no data copy, but only inside the same FS)
+                os.rename(storage_object.local_file, str(target_path))
+                # The contract is that the file still has to exist
+                open(storage_object.local_file, 'wb').close()
             except OSError as os_error:
                 if os_error.errno in [errno.ENOTSUP, errno.EXDEV]:
-                    shutil.copyfile(storage_object.local_file, new_file)
+                    # (2) If that didn't work, copy to temporary ...
+                    fd, new_file = tempfile.mkstemp(dir=str(target_path.parent))
+                    with open(storage_object.local_file, 'rb') as input_file, open(fd, 'wb') as output_file:
+                        shutil.copyfileobj(input_file, output_file)
+                    #     ... and rename(2) the temporary
+                    Path(new_file).replace(target_path)
                 else:
                     raise
         else:
-            new_path.touch()
+            # (3) If it's empty, we just touch() it
+            target_path.touch()
         new_object = storage_object._replace(
-            local_file=str(new_path),
+            local_file=str(target_path),
             size=new_size,
-            etag=str(new_path.stat().st_mtime_ns))  # XXX: better identity? MD5/Blake2 -> cache in file xattrs
+            etag=str(target_path.stat().st_mtime_ns))  # XXX: better identity? MD5/Blake2 -> cache in file xattrs
         self._to_cache(new_object)
         return new_object, new_size - old_size
 

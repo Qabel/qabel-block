@@ -105,8 +105,6 @@ def backend(request, cache):
     switch_to = (request.param == 'dummy')
     before = options.dummy
     options.dummy = switch_to
-    if options.dummy:
-        transfer.files = {}
     yield request.param
     options.dummy = before
 
