@@ -166,17 +166,25 @@ def pg_db(pg_connection):
 
 
 @pytest.yield_fixture
-def app(cache, pg_pool):
+def app(cache, pg_pool, tmpdir):
     prev_auth = options.dummy_auth
     prev_log = options.dummy_log
+    prev_dummy = options.dummy
+    prev_lost = options.local_storage
     options.dummy_auth = 'MAGICFARYDUST'
     options.dummy_log = True
+    if options.dummy:
+        # http_client fixture creates a new app for *every* request by default, therefore dummy mode wouldn't work.
+        options.dummy = False
+        options.local_storage = str(tmpdir)
     yield blockserver.server.make_app(
         cache_cls=lambda: (lambda: cache),
         database_pool=pg_pool,
         debug=True)
     options.dummy_auth = prev_auth
     options.dummy_log = prev_log
+    options.dummy = prev_dummy
+    options.local_storage = prev_lost
 
 
 @pytest.yield_fixture()
@@ -192,12 +200,8 @@ def transfer(request, cache, tmpdir):
     transfer_backend = request.param
     if transfer_backend == 'dummy':
         tmpdir = str(tmpdir)
-        shutil.rmtree(tmpdir)
         yield transfer_module.LocalTransfer(tmpdir, cache)
-        try:
-            shutil.rmtree(tmpdir)
-        except OSError:
-            pass
+        shutil.rmtree(tmpdir)
     if transfer_backend == 's3':
         yield transfer_module.S3Transfer(cache)
 
