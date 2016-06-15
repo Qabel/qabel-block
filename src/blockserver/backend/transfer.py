@@ -164,6 +164,36 @@ class LocalTransfer(AbstractTransfer):
         super().__init__(cache)
         self.basepath = Path(basedir)
 
+    def atomic_copy(self, source, destination):
+        # If renaming doesn't work, make a real copy and rename(2) the temporary
+        fd, new_file = tempfile.mkstemp(dir=os.path.dirname(destination))
+        with open(source, 'rb') as input_file, open(fd, 'wb') as output_file:
+            shutil.copyfileobj(input_file, output_file)
+        mtime = os.stat(new_file).st_mtime_ns
+        os.rename(new_file, destination)
+        return mtime
+
+    def move_or_copy(self, source, destination):
+        """
+        Copy/move *source* to *destination*, return mtime of the created file.
+
+        *source* still exists, but it's contents may be gone.
+        """
+        try:
+            # try to just rename(2) it (fast: no data copy, but only inside the same FS)
+            mtime = os.stat(source).st_mtime_ns
+            os.rename(source, destination)
+            # The contract is that the file still has to exist
+            open(source, 'wb').close()
+            return mtime
+        except OSError as os_error:
+            if os_error.errno in [errno.ENOTSUP, errno.EXDEV]:
+                # if the error is benign (tried to rename across devices or it's just not supported),
+                # make a real copy
+                return self.atomic_copy(source, destination)
+            else:
+                raise
+
     def get_size(self, storage_object: StorageObject) -> int:
         return getattr(self.meta(storage_object), 'size', 0)
 
@@ -175,25 +205,8 @@ class LocalTransfer(AbstractTransfer):
         target_path = self.basepath / file_key(storage_object)
         target_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Three ways we create the final file:
-        try:
-            # (1) just rename(2) it (fast: no data copy, but only inside the same FS)
-            etag = os.stat(storage_object.local_file).st_mtime_ns
-            os.rename(storage_object.local_file, str(target_path))
-            # The contract is that the file still has to exist
-            open(storage_object.local_file, 'wb').close()
-        except OSError as os_error:
-            if os_error.errno in [errno.ENOTSUP, errno.EXDEV]:
-                # (2) If that didn't work, copy to temporary ...
-                fd, new_file = tempfile.mkstemp(dir=str(target_path.parent))
-                with open(storage_object.local_file, 'rb') as input_file, open(fd, 'wb') as output_file:
-                    shutil.copyfileobj(input_file, output_file)
-                #     ... and rename(2) the temporary
-                new_path = Path(new_file)
-                etag = new_path.stat().st_mtime_ns
-                new_path.replace(target_path)
-            else:
-                raise
+        etag = self.move_or_copy(storage_object.local_file, str(target_path))
+
         new_object = storage_object._replace(
             local_file=str(target_path),
             size=new_size,
