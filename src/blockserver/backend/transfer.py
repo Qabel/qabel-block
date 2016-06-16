@@ -1,6 +1,7 @@
 from typing import Tuple, Union, NamedTuple
 
 import boto3
+import errno
 import tempfile
 import random
 import os
@@ -157,45 +158,60 @@ class S3Transfer(AbstractTransfer):
         return size
 
 
-files = {}
+class LocalTransfer(AbstractTransfer):
 
-
-class DummyTransfer(AbstractTransfer):
-
-    def __init__(self, cache):
+    def __init__(self, basedir, cache):
         super().__init__(cache)
-        self._tempdir = tempfile.mkdtemp()
+        self.basepath = Path(basedir)
+
+    def atomic_copy(self, source, destination):
+        # If renaming doesn't work, make a real copy and rename(2) the temporary
+        fd, new_file = tempfile.mkstemp(dir=os.path.dirname(destination))
+        with open(source, 'rb') as input_file, open(fd, 'wb') as output_file:
+            shutil.copyfileobj(input_file, output_file)
+        mtime = os.stat(new_file).st_mtime_ns
+        os.rename(new_file, destination)
+        return mtime
+
+    def move_or_copy(self, source, destination):
+        """
+        Copy/move *source* to *destination*, return mtime of the created file.
+
+        *source* still exists, but it's contents may be gone.
+        """
+        try:
+            # try to just rename(2) it (fast: no data copy, but only inside the same FS)
+            mtime = os.stat(source).st_mtime_ns
+            os.rename(source, destination)
+            # The contract is that the file still has to exist
+            open(source, 'wb').close()
+            return mtime
+        except OSError as os_error:
+            if os_error.errno in [errno.ENOTSUP, errno.EXDEV]:
+                # if the error is benign (tried to rename across devices or it's just not supported),
+                # make a real copy
+                return self.atomic_copy(source, destination)
+            else:
+                raise
 
     def get_size(self, storage_object: StorageObject) -> int:
-        try:
-            cached = self._from_cache(storage_object)
-        except KeyError:
-            try:
-                return os.path.getsize(
-                    files[file_key(storage_object)].local_file)
-            except KeyError:
-                return None
-        else:
-            return cached.size
+        return getattr(self.meta(storage_object), 'size', 0)
 
     def store(self, storage_object: StorageObject) -> Tuple[StorageObject, int]:
         old_size = self.get_size(storage_object)
         if old_size is None:
             old_size = 0
         new_size = os.path.getsize(storage_object.local_file)
-        new_path = os.path.join(self._tempdir, file_key(storage_object))
-        dirname = os.path.dirname(new_path)
-        os.makedirs(dirname, exist_ok=True)
-        if new_size != 0:
-            shutil.copyfile(storage_object.local_file, new_path)
-        else:
-            Path(new_path).touch()
+        target_path = self.basepath / file_key(storage_object)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+        etag = self.move_or_copy(storage_object.local_file, str(target_path))
+
         new_object = storage_object._replace(
-            local_file=new_path,
+            local_file=str(target_path),
             size=new_size,
-            etag=str(random.randint(1, 20000)))
+            etag=str(etag))
         self._to_cache(new_object)
-        files[file_key(storage_object)] = new_object
         return new_object, new_size - old_size
 
     def retrieve(self, storage_object: StorageObject) -> StorageObject:
@@ -207,20 +223,40 @@ class DummyTransfer(AbstractTransfer):
             if cached.etag == storage_object.etag:
                 return storage_object._replace(fd=None)
 
+        path = self.basepath / file_key(storage_object)
         try:
-            object = files[file_key(storage_object)]
-        except KeyError:
+            st = path.stat()
+        except FileNotFoundError:
             return None
+        object = storage_object._replace(size=st.st_size, etag=str(st.st_mtime_ns))
         if storage_object.etag == object.etag:
             return storage_object._replace(fd=None)
         else:
-            return object._replace(fd=open(object.local_file, 'rb'))
+            return object._replace(fd=path.open('rb'))
 
     def meta(self, storage_object: StorageObject):
-        return files.get(file_key(storage_object))
+        try:
+            cached = self._from_cache(storage_object)
+        except KeyError:
+            path = self.basepath / file_key(storage_object)
+            try:
+                st = path.stat()
+            except FileNotFoundError:
+                return None
+            object = storage_object._replace(size=st.st_size, etag=str(st.st_mtime_ns))
+            self._to_cache(object)
+            return object
+        else:
+            return cached
 
     def delete(self, storage_object: StorageObject):
+        path = self.basepath / file_key(storage_object)
         try:
-            return os.path.getsize(files.pop(file_key(storage_object)).local_file)
-        except KeyError:
+            st = path.stat()
+        except FileNotFoundError:
             return 0
+        try:
+            path.unlink()
+        except OSError:
+            return 0  # raced delete
+        return st.st_size

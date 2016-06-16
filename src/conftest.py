@@ -2,6 +2,7 @@ import functools
 import os
 import pytest
 import random
+import shutil
 import string
 import tempfile
 import traceback
@@ -104,8 +105,6 @@ def backend(request, cache):
     switch_to = (request.param == 'dummy')
     before = options.dummy
     options.dummy = switch_to
-    if options.dummy:
-        transfer.files = {}
     yield request.param
     options.dummy = before
 
@@ -167,17 +166,25 @@ def pg_db(pg_connection):
 
 
 @pytest.yield_fixture
-def app(cache, pg_pool):
+def app(cache, pg_pool, tmpdir):
     prev_auth = options.dummy_auth
     prev_log = options.dummy_log
+    prev_dummy = options.dummy
+    prev_lost = options.local_storage
     options.dummy_auth = 'MAGICFARYDUST'
     options.dummy_log = True
+    if options.dummy:
+        # http_client fixture creates a new app for *every* request by default, therefore dummy mode wouldn't work.
+        options.dummy = False
+        options.local_storage = str(tmpdir)
     yield blockserver.server.make_app(
         cache_cls=lambda: (lambda: cache),
         database_pool=pg_pool,
         debug=True)
     options.dummy_auth = prev_auth
     options.dummy_log = prev_log
+    options.dummy = prev_dummy
+    options.local_storage = prev_lost
 
 
 @pytest.yield_fixture()
@@ -189,12 +196,12 @@ def app_options():
 
 
 @pytest.yield_fixture()
-def transfer(request, cache):
+def transfer(request, cache, tmpdir):
     transfer_backend = request.param
     if transfer_backend == 'dummy':
-        transfer_module.files = {}
-        yield transfer_module.DummyTransfer(cache)
-        transfer_module.files = {}
+        tmpdir = str(tmpdir)
+        yield transfer_module.LocalTransfer(tmpdir, cache)
+        shutil.rmtree(tmpdir)
     if transfer_backend == 's3':
         yield transfer_module.S3Transfer(cache)
 
