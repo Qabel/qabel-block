@@ -388,9 +388,13 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
             else:
                 return partial(cache.RedisCache, host=options.redis_host, port=options.redis_port)
 
+    if options.dummy:
+        dummy_dir = tempfile.mkdtemp()
+        print('Dummy storage path:', dummy_dir)
+
     def get_transfer_cls():
         if options.dummy:
-            return partial(LocalTransfer, tempfile.mkdtemp())
+            return partial(LocalTransfer, dummy_dir)
         if options.local_storage:
             return partial(LocalTransfer, options.local_storage)
         return S3Transfer
