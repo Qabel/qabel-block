@@ -63,3 +63,10 @@ target/
 
 #Pycharm
 .idea/
+
+*~
+
+trees
+deployed
+activate.sh
+_venv

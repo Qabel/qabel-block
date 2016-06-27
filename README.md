@@ -2,25 +2,66 @@
 
 This server handles uploads, downloads and deletes on the storage backend for Qabel Box.
 
-## Requirements
+## Requirements:
 
-* Postgresql >= 9.5
-* Python >= 3.5
-* Redis
 
-## Installation
+- Python 3.5 (which *always* includes pip, unless your distribution is
+  badly broken; try running `[sudo] python -m ensurepip` or use
+  pyenv. Also, report your distribution.)
+- virtualenv
+- PostgreSQL >=9.5
+- Redis
 
-	cd src
-	virtualenv ../venv --python=python3.5
-	source ../venv/bin/activate
-	pip install -r ../requirements.txt
+## <a name="installation"></a> Installation:
 
-The server needs a PostgreSQL (>=9.5) database that needs to me initialized by
+    # Creates a virtualenv where invoke et al live
+    ./bootstrap.sh
+    # Activates the virtualenv. Note: the leading "." is required.
+    . ./activate.sh
+    # Deploy git HEAD to live/ directory in it's own isolated environment
+    invoke deploy
+    # Run simple standalone server
+	python live/run.py
 
-	alembic -x "url=postgresql://username:password@localhost/dbname" upgrade head
+Note: If the DSN for your PostgreSQL is different from the default
+(`postgresql://postgres:postgres@localhost/qabel-block`),
+change it in your local configuration (see below).
 
-Note: If the DSN for your PostgreSQL is different, then you need to adjust it both for Alembic and set the `--psql-dsn`
-server option accordingly.
+## <a name="configuration"></a> Configuration
+
+If you intend to use the simple server script (`run.py`) then [configuration options](#opts) are passed
+as command line parameters, for example:
+
+    src$ python run.py --prometheus-port 1234 --local-storage /some/directory
+
+When using our deployment system based on invoke the configuration happens in configuration files instead. The search
+path is:
+
+* /etc/invoke.yaml, /etc/qabel.yaml
+* ~/.invoke.yaml, ~/.qabel.yaml
+* ./invoke.yaml, ./qabel.yaml
+
+Note that the `invoke.yaml` file in this directory is under version control and shouldn't be edited for local
+configuration, instead, create a `qabel.yaml` file (either in this directory or in one of the places listed above).
+
+The block server is configured in the `qabel.block` section, e.g.
+
+    qabel:
+        block:
+            # options for the block server
+            psql_dsn: postgresql://postgres:verysecure@pgsql.local/qabel-block
+            accounting-host: http://testing.example.net/
+            local-storage: /storage/directory
+
+            uwsgi:
+                # general uWSGI options
+                processes: 4
+                http-socket: /tmp/block-server.sock
+
+The options directly in the `block` section are passed to the server (not over a command line, therefore not visible to
+any other users on the system), while the `uwsgi` subsection is intended for any uWSGI options needed for your
+particular setup. This example instructs uWSGI to use 4 worker processes and create a HTTP UDS socket at
+`/tmp/block-server.sock`, which may be typical when using a reverse proxy.
 
 ## Running
 
@@ -39,10 +80,36 @@ server option accordingly.
 
         src$ python run.py <options>
 
-- The server in the uWSGI application server: see `src/uwsgi_plumbing.py`. Read the part about how you pass options
-  to the server.
+### Production deployment
 
-## Storage backends
+Use uWSGI as the application server (for multiple applications the emperor mode is highly recommended).
+
+Initial setup is covered under [installation](#installation) above, also read the [configuration](#configuration)
+section.
+
+Upgrades:
+
+    . ./activate.sh  # if not done yet
+    git pull         # if git is not updated yet
+    invoke deploy
+
+uWSGI will reload workers automatically.
+
+Rollbacks:
+
+    . ./activate.sh
+    invoke deploy --commit HEAD~1  # or another known-good commit
+    # alternatively a short notation can be used:
+    inv deploy -c HEAD~1
+
+Note that rollbacks are very fast (basically changing a symlink and
+waiting for uWSGI to restart workers), unless you deleted the old tree
+in the `trees/` directory. Database migrations are also run.
+
+For advanced configurations, see
+[The Art Of Graceful Reloading](http://uwsgi-docs.readthedocs.io/en/latest/articles/TheArtOfGracefulReloading.html).
+
+## <a name="opts"></a> Storage backends
 
 Available storage backends:
 
