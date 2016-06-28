@@ -1,0 +1,13 @@
+qabel:
+    block:
+        # options for the block server
+        logging-config:
+        psql_dsn: postgresql://postgres:postgres@localhost/qabel-block
+        accounting-host: http://testing.example.net/
+        dummy-auth: MAGICFAIRY
+
+        local-storage: lost-dir
+
+        uwsgi:
+            # general uWSGI options
+            processes: 4

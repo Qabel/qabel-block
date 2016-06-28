@@ -41,6 +41,7 @@ $ uwsgi uwsgi-block.ini
 
 import json
 import logging.config
+import os.path
 import signal
 import socket
 import sys
@@ -67,10 +68,11 @@ def spawn_on_socket(fd):
         prometheus_port = options.prometheus_port + worker_id
         uwsgi.log('starting prometheus server on port %d' % prometheus_port)
         start_http_server(prometheus_port)
-    uwsgi.log('uwsgi plumber reporting for duty on uWSGI worker %s' % worker_id)
+    uwsgi.log('tornado plumber reporting for duty on uWSGI worker %s' % worker_id)
 
 
 def stop_ioloop(sig, frame):
+    print('uWSGI worker', uwsgi.worker_id(), 'received signal', sig)
     loop = IOLoop.current()
     loop.add_callback_from_signal(loop.stop)
 
@@ -96,7 +98,11 @@ def parse_arguments(argv):
 
 
 def configure_logging():
-    with open(options.logging_config, 'r') as conf:
+    file = options.logging_config
+    if not os.path.exists(file):
+        print('logging configuration {} not found, ignoring'.format(file))
+        return
+    with open(file, 'r') as conf:
         conf_dictionary = json.load(conf)
         logging.config.dictConfig(conf_dictionary)
 
