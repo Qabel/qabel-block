@@ -30,6 +30,7 @@ class UwsgiConfiguration(BaseUwsgiConfiguration):
             'virtualenv': '{virtualenv}',
             # touch-chain-reload + python-worker-override is ATM broken, see note on my desk (haha)
             # (OTOH maybe not so important if one is using green/blue deploys anyway!)
+            'chdir': '{basedir}',
             'touch-reload': '{uwsgi_ini}',
             'lazy-apps': True,
             'enable-threads': True,
