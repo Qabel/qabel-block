@@ -28,8 +28,8 @@ class UwsgiConfiguration(BaseUwsgiConfiguration):
             'python-worker-override': '{tree}/src/uwsgi_plumbing.py',
             'pythonpath': '{tree}/src',
             'virtualenv': '{virtualenv}',
-            # touch-chain-reload + python-worker-override is ATM broken, see note on my desk (haha)
-            # (OTOH maybe not so important if one is using green/blue deploys anyway!)
+            'chdir': '{basedir}',
+            # touch-chain-reload fixed in uwsgi development branch uwsgi-2.0
             'touch-reload': '{uwsgi_ini}',
             'lazy-apps': True,
             'enable-threads': True,
