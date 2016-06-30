@@ -24,7 +24,7 @@ class UwsgiConfiguration(BaseUwsgiConfiguration):
     def automagic(self):
         """Return automatically inferred|inferrable configuration."""
         config = {
-            'plugin': 'python',
+            'plugin': 'python3',
             'python-worker-override': '{tree}/src/uwsgi_plumbing.py',
             'pythonpath': '{tree}/src',
             'virtualenv': '{virtualenv}',
