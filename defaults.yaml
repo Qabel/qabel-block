@@ -3,11 +3,15 @@ qabel:
         # options for the block server
         logging-config:
         psql_dsn: postgresql://postgres:postgres@localhost/qabel-block
-        accounting-host: http://testing.example.net/
-        dummy-auth: MAGICFAIRY
 
-        local-storage: lost-dir
+        accounting-host: http://testing.example.net/
+        # Must be the same secret the accounting servers has set as API_SECRET
+        apisecret: some_secret
+
+        # If you specify a relative path, then it's relative to the project root directory (where this file is)
+        #local-storage: lost-dir
 
         uwsgi:
             # general uWSGI options
             processes: 4
+            http-socket: :9697
