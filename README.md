@@ -40,8 +40,8 @@ path is:
 * ~/.invoke.yaml, ~/.qabel.yaml
 * ./invoke.yaml, ./qabel.yaml
 
-Note that the `invoke.yaml` file in this directory is under version control and shouldn't be edited for local
-configuration, instead, create a `qabel.yaml` file (either in this directory or in one of the places listed above).
+Note that the `defaults.yaml` file in this directory is under version control and shouldn't be edited for local
+configuration, instead, create a `invoke.yaml` or `qabel.yaml` file (either in this directory or in one of the places listed above).
 
 The block server is configured in the `qabel.block` section, e.g.
 
