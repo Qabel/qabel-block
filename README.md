@@ -18,10 +18,9 @@ This server handles uploads, downloads and deletes on the storage backend for Qa
     ./bootstrap.sh
     # Activates the virtualenv. Note: the leading "." is required.
     . ./activate.sh
-    # Deploy git HEAD to live/ directory in it's own isolated environment
-    invoke deploy
     # Run simple standalone server
-	python live/run.py
+    cd src
+	python run.py
 
 Note: If the DSN for your PostgreSQL is different from the default
 (`postgresql://postgres:postgres@localhost/qabel-block`),
