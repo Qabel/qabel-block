@@ -187,7 +187,7 @@ class LocalTransfer(AbstractTransfer):
             open(source, 'wb').close()
             return mtime
         except OSError as os_error:
-            if os_error.errno in [errno.ENOTSUP, errno.EXDEV]:
+            if os_error.errno in [errno.ENOTSUP, errno.EXDEV, errno.EPERM]:
                 # if the error is benign (tried to rename across devices or it's just not supported),
                 # make a real copy
                 return self.atomic_copy(source, destination)
