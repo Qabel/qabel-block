@@ -2,6 +2,7 @@ from typing import Tuple, Union, NamedTuple
 
 import boto3
 import errno
+import logging
 import tempfile
 import random
 import os
@@ -163,6 +164,7 @@ class LocalTransfer(AbstractTransfer):
     def __init__(self, basedir, cache):
         super().__init__(cache)
         self.basepath = Path(basedir)
+        self.logger = logging.getLogger("qabel-block.local-storage." + basedir)
 
     def atomic_copy(self, source, destination):
         # If renaming doesn't work, make a real copy and rename(2) the temporary
@@ -190,6 +192,7 @@ class LocalTransfer(AbstractTransfer):
             if os_error.errno in [errno.ENOTSUP, errno.EXDEV, errno.EPERM]:
                 # if the error is benign (tried to rename across devices or it's just not supported),
                 # make a real copy
+                self.logger.exception("error rename(2)ing from StorObj.local_file to local-storage dir, trying real copy")
                 return self.atomic_copy(source, destination)
             else:
                 raise
