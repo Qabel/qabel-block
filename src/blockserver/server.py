@@ -358,7 +358,8 @@ def main():
         application.listen(address=options.address, port=options.port)
     else:
         server = tornado.httpserver.HTTPServer(application,
-                                               xheaders=True)
+                                               xheaders=True,
+                                               max_body_size=options.max_body_size)
         server.bind(options.port)
         server.start()
     if options.asyncio:
