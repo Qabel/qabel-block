@@ -60,7 +60,7 @@ from blockserver.server import make_app
 def spawn_on_socket(fd):
     worker_id = uwsgi.worker_id()
     application = make_app(debug=options.debug)
-    server = HTTPServer(application, xheaders=True)
+    server = HTTPServer(application, xheaders=True, max_body_size=options.max_body_size)
     sock = socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM)
     server.add_sockets([sock])
 
