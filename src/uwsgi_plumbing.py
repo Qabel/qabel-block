@@ -73,7 +73,7 @@ def spawn_on_socket(fd):
 
 def stop_ioloop(sig, frame):
     print('uWSGI worker', uwsgi.worker_id(), 'received signal', sig)
-    loop = IOLoop.current()
+    loop = tornado.ioloop.IOLoop.current()
     loop.add_callback_from_signal(loop.stop)
 
 

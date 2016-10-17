@@ -314,6 +314,9 @@ class AuthorizationMixin:
             raise HTTPError(403, reason="User not found")
         except auth.BypassAuth as bypass_auth:
             self.user = bypass_auth.args[0]
+            self.bypass_auth = True
+        else:
+            self.bypass_auth = False
 
 
 # noinspection PyMethodOverriding,PyAbstractClass
@@ -391,7 +394,7 @@ class PushWebSocketHandler(WebSocketHandler):
     def select_subprotocol(self, subprotocols):
         if self.PROTOCOL not in subprotocols:
             self.logger.warning('Subprotocol negotiation will fail: Our protocol %r was not proposed by client: %r', self.PROTOCOL, subprotocols)
-            return None
+            return
         return self.PROTOCOL
 
     def on_message(self, message):
@@ -409,11 +412,20 @@ class FileWebSocketHandler(PushWebSocketHandler):
 
 
 # noinspection PyMethodOverriding,PyAbstractClass
-class PrefixWebSocketHandler(AuthorizationMixin, PushWebSocketHandler):
-    def initialize(self, get_pubsub_cls, get_auth_cls, get_cache_cls):
+class PrefixWebSocketHandler(AuthorizationMixin, DatabaseMixin, PushWebSocketHandler):
+    def initialize(self, get_pubsub_cls, get_auth_cls, get_cache_cls, database_pool):
         super().initialize(get_pubsub_cls)
         self.cache = get_cache_cls()()
         self.auth_callback = get_auth_cls()(self.cache)
+        self.database_pool = database_pool
+        self._connection = None
+
+    @gen.coroutine
+    def get(self, prefix):
+        db = yield self.get_database()
+        if not self.bypass_auth and not db.has_prefix(self.user.user_id, prefix):
+            raise HTTPError(403, reason='Not authorized for this prefix')
+        super().get(prefix)
 
     def open(self, prefix):
         super().listen(channel=prefix + '*', wildcard=True)
@@ -488,6 +500,7 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
             get_pubsub_cls=get_pubsub_class,
             get_auth_cls=get_auth_class,
             get_cache_cls=cache_cls,
+            database_pool=database_pool,
         )),
         (r'^/api/v0/files/' + prefix + file, FileHandler, dict(
             get_pubsub_cls=get_pubsub_class,
