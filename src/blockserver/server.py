@@ -14,7 +14,7 @@ from tornado import concurrent
 from tornado import gen
 from tornado.options import define, options
 from tornado.web import Application, RequestHandler, stream_request_body, Finish, HTTPError
-from tornado.websocket import WebSocketHandler
+from tornado.websocket import WebSocketHandler, WebSocketClosedError
 
 from blockserver.backend import cache, auth, pubsub
 from blockserver.backend.transfer import StorageObject, S3Transfer, LocalTransfer
@@ -375,6 +375,7 @@ class PushWebSocketHandler(WebSocketHandler):
     def prepare(self):
         if 'blocks' in self.request.path:
             raise HTTPError(405, log_message='WebSockets are not permitted on blocks.')
+        mon.WEBSOCKET_CONNECTIONS.inc()
 
     def initialize(self, get_pubsub_cls):
         self.pubsub = get_pubsub_cls()()
@@ -384,12 +385,15 @@ class PushWebSocketHandler(WebSocketHandler):
         """
         Listen to *channel*. May use *wildcards* in *channel*.
         """
+        self._open_time = perf_counter()
         yield self.pubsub.subscribe(channel, wildcard)
         yield self.process_messages()
 
-    def close(self, code=None, reason=None):
+    def on_close(self, code=None, reason=None):
         self.logger.info('Connection closed (code=%d, reason=%r)', code, reason)
         self.pubsub.close()
+        mon.WEBSOCKET_CONNECTIONS.dec()
+        mon.WEBSOCKET_CONNECTION_DURATION.observe(perf_counter() - self._open_time)
 
     def select_subprotocol(self, subprotocols):
         if self.PROTOCOL not in subprotocols:
@@ -403,6 +407,7 @@ class PushWebSocketHandler(WebSocketHandler):
     async def process_messages(self):
         async for message in self.pubsub:
             self.write_message(message)
+            mon.WEBSOCKET_MESSAGES.inc()
 
 
 # noinspection PyMethodOverriding,PyAbstractClass

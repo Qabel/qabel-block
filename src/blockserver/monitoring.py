@@ -19,7 +19,7 @@ TIME_IN_TRANSFER_META = Histogram('block_wait_for_transfer_meta',
 TIME_IN_TRANSFER_DELETE = Histogram('block_wait_for_transfer_delete',
                                     'Time spent deleting a file')
 
-SUMMARY_S3_REQUESTS = Summary('block_s3_requests', 'Count ant time of requests to s3')
+SUMMARY_S3_REQUESTS = Summary('block_s3_requests', 'Count and time of requests to s3')
 
 REQ_RESPONSE = Histogram('block_response_time',
                          'Time to respond to a request')
@@ -42,6 +42,18 @@ TRAFFIC_BY_REQUEST = Summary('block_traffic_by_request',
 
 QUOTA_BY_REQUEST = Summary('block_quota_by_request',
                            'Quota change by request', ['type'])
+
+WEBSOCKET_CONNECTIONS = Gauge('websocket_connections',
+                              'Number of open WebSocket connections')
+
+WEBSOCKET_CONNECTION_DURATION = Histogram('weboscket_connection_duration',
+                                          'Time WebSocket connection is open')
+
+WEBSOCKET_MESSAGES = Counter('websocket_messages',
+                             'Number of sent WebSocket messages')
+
+PUBSUB_PUBLISHED = Counter('pubsub_published',
+                           'Messages published via pubsub')
 
 
 def time(metric):

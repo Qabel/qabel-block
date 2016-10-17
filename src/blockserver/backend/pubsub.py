@@ -3,6 +3,8 @@ import json
 import aioredis
 from tornado import ioloop
 
+from .. import monitoring
+
 
 class AbstractPublishSubscribe:
     async def subscribe(self, channel, wildcard=False):
@@ -53,6 +55,7 @@ class AsyncRedisPublishSubscribe(AbstractPublishSubscribe):
 
     async def publish(self, channel, message):
         await (await self.redis()).publish_json(channel, message)
+        monitoring.PUBSUB_PUBLISHED.inc()
 
     def __aiter__(self):
         # See also: PEP-0525
