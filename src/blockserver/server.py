@@ -488,20 +488,10 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
     if database_pool is None:
         database_pool = SimpleConnectionPool(1, 20, dsn=options.psql_dsn)
 
-    prefix = r'(?P<prefix>[\d\w-]+)/'
-    file = r'(?P<file_path>[/\d\w-]+)'
+    prefix = r'(?P<prefix>[\d\w-]+)'
+    file = r'/(?P<file_path>[/\d\w-]+)'
 
     application = Application([
-        (r'^/api/v0/files/' + prefix + file + '/ws', FileWebSocketHandler, dict(
-            get_pubsub_cls=get_pubsub_class,
-        )),
-        #                               v- prefix ends in a / already
-        (r'^/api/v0/files/' + prefix + 'ws', PrefixWebSocketHandler, dict(
-            get_pubsub_cls=get_pubsub_class,
-            get_auth_cls=get_auth_class,
-            get_cache_cls=cache_cls,
-            database_pool=database_pool,
-        )),
         (r'^/api/v0/files/' + prefix + file, FileHandler, dict(
             get_pubsub_cls=get_pubsub_class,
             transfer_cls=get_transfer_cls,
@@ -509,6 +499,15 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
             get_cache_cls=cache_cls,
             database_pool=database_pool,
             concurrent_transfers=options.transfers,
+        )),
+        (r'^/api/v0/websocket/' + prefix + file, FileWebSocketHandler, dict(
+            get_pubsub_cls=get_pubsub_class,
+        )),
+        (r'^/api/v0/websocket/' + prefix, PrefixWebSocketHandler, dict(
+            get_pubsub_cls=get_pubsub_class,
+            get_auth_cls=get_auth_class,
+            get_cache_cls=cache_cls,
+            database_pool=database_pool,
         )),
         (r'^/api/v0/prefix/', PrefixHandler, dict(
             get_cache_cls=cache_cls,

@@ -379,14 +379,14 @@ def websocket_headers():
 
 @pytest.fixture()
 def websocket_file_connector(path, websocket_headers):
-    path = path.replace('http://', 'ws://')
-    return websocket_connect(HTTPRequest(url=path + '/ws', headers=websocket_headers))
+    path = path.replace('http://', 'ws://').replace('/api/v0/files', '/api/v0/websocket')
+    return websocket_connect(HTTPRequest(url=path, headers=websocket_headers))
 
 
 @pytest.fixture()
 def websocket_prefix_connector(base_url, prefix, websocket_headers):
     def connector(extra_headers={}):
-        path = base_url.replace('http://', 'ws://') + '/api/v0/files/' + prefix + '/ws'
+        path = base_url.replace('http://', 'ws://') + '/api/v0/websocket/' + prefix
         headers = websocket_headers
         headers.update(extra_headers)
         return websocket_connect(HTTPRequest(url=path, headers=headers))
@@ -439,8 +439,8 @@ def test_ws_delete(backend, http_client, path, file_path, websocket_file_connect
 @pytest.mark.gen_test
 def test_ws_not_on_blocks(backend, http_server, path, websocket_headers):
     try:
-        path = path.replace('http://', 'ws://')
-        yield websocket_connect(HTTPRequest(url=path + 'blocks/asdf/ws', headers=websocket_headers))
+        path = path.replace('http://', 'ws://').replace('/api/v0/files', '/api/v0/websocket')
+        yield websocket_connect(HTTPRequest(url=path + '/blocks/asdf', headers=websocket_headers))
         assert False, 'Did not raise'
     except HTTPError as error:
         assert error.code == 405
