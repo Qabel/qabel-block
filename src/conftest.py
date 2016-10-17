@@ -8,6 +8,7 @@ import tempfile
 import traceback
 from tempfile import NamedTemporaryFile
 
+import tornado
 from alembic.command import upgrade
 from alembic.config import Config
 from glinda.testing import services
@@ -53,6 +54,24 @@ def testfile():
 @pytest.fixture
 def service_layer():
     return services.ServiceLayer()
+
+
+@pytest.fixture
+def io_loop(request):
+
+    """Create an instance of the `tornado.ioloop.IOLoop` for each test case.
+    """
+    IOLoop = tornado.platform.asyncio.AsyncIOMainLoop
+    io_loop = IOLoop.current()
+    io_loop.make_current()
+
+    def _close():
+        io_loop.clear_current()
+        if not IOLoop.initialized() or io_loop is not IOLoop.instance():
+            io_loop.close(all_fds=True)
+
+    request.addfinalizer(_close)
+    return io_loop
 
 
 @pytest.yield_fixture
@@ -257,6 +276,10 @@ def temp_check(monkeypatch):
 
     monkeypatch.setattr(tempfile, 'NamedTemporaryFile', named_temp_file)
     return TempCheckMethods()
+
+
+def pytest_configure(config):
+    tornado.platform.asyncio.AsyncIOMainLoop().install()
 
 
 def pytest_addoption(parser):

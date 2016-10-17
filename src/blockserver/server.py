@@ -14,8 +14,9 @@ from tornado import concurrent
 from tornado import gen
 from tornado.options import define, options
 from tornado.web import Application, RequestHandler, stream_request_body, Finish, HTTPError
+from tornado.websocket import WebSocketHandler, WebSocketClosedError
 
-from blockserver.backend import cache, auth
+from blockserver.backend import cache, auth, pubsub
 from blockserver.backend.transfer import StorageObject, S3Transfer, LocalTransfer
 from blockserver.backend.database import PostgresUserDatabase
 from psycopg2.pool import SimpleConnectionPool
@@ -23,7 +24,6 @@ from blockserver import monitoring as mon
 from blockserver.backend.quota import QuotaPolicy
 
 define('debug', help="Enable debug output for tornado", default=False)
-define('asyncio', help="Run on the asyncio loop instead of the tornado IOLoop", default=False)
 define('transfers', help="Thread pool size for transfers", default=10)
 define('port', help="Port of this server", default=8888)
 define('address', help="Address of this server", default="localhost")
@@ -84,10 +84,11 @@ class FileHandler(DatabaseMixin, RequestHandler):
     auth = None
     streamer = None
 
-    def initialize(self, transfer_cls, get_auth_cls, get_cache_cls, database_pool,
+    def initialize(self, get_pubsub_cls, transfer_cls, get_auth_cls, get_cache_cls, database_pool,
                    concurrent_transfers: int=10):
         """
-        :param get_cache_class: A funciton that returns a Cache class
+        :param get_pubsub_cls: A function that returns a AbstractPublishSubscribe implementation
+        :param get_cache_class: A function that returns a Cache class
         :param get_auth_cls: A function that returns a callback used for authorization
         :param database_pool: Postgresql database pool
         :param transfer_cls: A function that returns a Transfer class
@@ -98,6 +99,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.cache = get_cache_cls()()  # type: cache.AbstractCache
         self.transfer = transfer_cls()(cache=self.cache)
         self.auth_callback = get_auth_cls()(self.cache)
+        self.get_pubsub_cls = get_pubsub_cls
         self.database_pool = database_pool
         self._connection = None
         self.temp = None
@@ -211,6 +213,15 @@ class FileHandler(DatabaseMixin, RequestHandler):
         yield self.save_size_log(prefix, size_diff)
         self.set_status(204)
         self.set_header('ETag', storage_object.etag)
+
+        path = '{}/{}'.format(prefix, file_path)
+        pubsub = self.get_pubsub_cls()()
+        yield pubsub.publish(path.encode(), {
+            'operation': 'POST',
+            'prefix': prefix,
+            'path': path,
+            'etag': storage_object.etag,
+        })
         self.finish()
 
     def check_post_etag(self, prefix, file_path, etag):
@@ -248,6 +259,13 @@ class FileHandler(DatabaseMixin, RequestHandler):
         size = yield self.delete_file(prefix, file_path)
         yield self.save_size_log(prefix, -size)
         self.set_status(204)
+        path = '{}/{}'.format(prefix, file_path)
+        pubsub = self.get_pubsub_cls()()
+        yield pubsub.publish(path.encode(), {
+            'operation': 'DELETE',
+            'prefix': prefix,
+            'path': path,
+        })
         self.finish()
 
     @concurrent.run_on_executor(executor='_thread_pool')
@@ -286,6 +304,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
 class AuthorizationMixin:
 
     async def prepare(self):
+        super().prepare()
         auth_header = self.request.headers.get('Authorization', None)
         if auth_header is None:
             raise HTTPError(403, reason="No authorization given")
@@ -295,6 +314,9 @@ class AuthorizationMixin:
             raise HTTPError(403, reason="User not found")
         except auth.BypassAuth as bypass_auth:
             self.user = bypass_auth.args[0]
+            self.bypass_auth = True
+        else:
+            self.bypass_auth = False
 
 
 # noinspection PyMethodOverriding,PyAbstractClass
@@ -344,6 +366,76 @@ class QuotaHandler(AuthorizationMixin, DatabaseMixin, RequestHandler):
         self.finish()
 
 
+# noinspection PyMethodOverriding,PyAbstractClass
+class PushWebSocketHandler(WebSocketHandler):
+    PROTOCOL = 'v0.ws.block.qabel.de'
+
+    logger = logger.getChild(__name__)
+
+    def prepare(self):
+        if 'blocks' in self.request.path:
+            raise HTTPError(405, log_message='WebSockets are not permitted on blocks.')
+        mon.WEBSOCKET_CONNECTIONS.inc()
+
+    def initialize(self, get_pubsub_cls):
+        self.pubsub = get_pubsub_cls()()
+
+    @gen.coroutine
+    def listen(self, channel, wildcard=False):
+        """
+        Listen to *channel*. May use *wildcards* in *channel*.
+        """
+        self._open_time = perf_counter()
+        yield self.pubsub.subscribe(channel, wildcard)
+        yield self.process_messages()
+
+    def on_close(self, code=None, reason=None):
+        self.logger.info('Connection closed (code=%d, reason=%r)', code, reason)
+        self.pubsub.close()
+        mon.WEBSOCKET_CONNECTIONS.dec()
+        mon.WEBSOCKET_CONNECTION_DURATION.observe(perf_counter() - self._open_time)
+
+    def select_subprotocol(self, subprotocols):
+        if self.PROTOCOL not in subprotocols:
+            self.logger.warning('Subprotocol negotiation will fail: Our protocol %r was not proposed by client: %r', self.PROTOCOL, subprotocols)
+            return
+        return self.PROTOCOL
+
+    def on_message(self, message):
+        self.logger.warning('Received bogus message (length %d) from client, ignoring', len(message))
+
+    async def process_messages(self):
+        async for message in self.pubsub:
+            self.write_message(message)
+            mon.WEBSOCKET_MESSAGES.inc()
+
+
+# noinspection PyMethodOverriding,PyAbstractClass
+class FileWebSocketHandler(PushWebSocketHandler):
+    def open(self, prefix, file_path):
+        super().listen(channel=prefix + '/' + file_path)
+
+
+# noinspection PyMethodOverriding,PyAbstractClass
+class PrefixWebSocketHandler(AuthorizationMixin, DatabaseMixin, PushWebSocketHandler):
+    def initialize(self, get_pubsub_cls, get_auth_cls, get_cache_cls, database_pool):
+        super().initialize(get_pubsub_cls)
+        self.cache = get_cache_cls()()
+        self.auth_callback = get_auth_cls()(self.cache)
+        self.database_pool = database_pool
+        self._connection = None
+
+    @gen.coroutine
+    def get(self, prefix):
+        db = yield self.get_database()
+        if not self.bypass_auth and not db.has_prefix(self.user.user_id, prefix):
+            raise HTTPError(403, reason='Not authorized for this prefix')
+        super().get(prefix)
+
+    def open(self, prefix):
+        super().listen(channel=prefix + '*', wildcard=True)
+
+
 def main():
     application = make_app(debug=options.debug)
 
@@ -362,14 +454,9 @@ def main():
                                                max_body_size=options.max_body_size)
         server.bind(options.port)
         server.start()
-    if options.asyncio:
-        logger.info('Using asyncio')
-        from tornado.platform.asyncio import AsyncIOMainLoop
-        AsyncIOMainLoop.current().start()
-    else:
-        logger.info('Using IOLoop')
-        from tornado.ioloop import IOLoop
-        IOLoop.current().start()
+    logger.info('Using asyncio')
+    from tornado.platform.asyncio import AsyncIOMainLoop
+    AsyncIOMainLoop.current().start()
 
 
 def make_app(cache_cls=None, database_pool=None, debug=False):
@@ -381,6 +468,9 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
             return auth.DummyAuth
         else:
             return auth.Auth
+
+    def get_pubsub_class():
+        return partial(pubsub.AsyncRedisPublishSubscribe, host=options.redis_host, port=options.redis_port)
 
     if cache_cls is None:
         def cache_cls():
@@ -403,13 +493,26 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
     if database_pool is None:
         database_pool = SimpleConnectionPool(1, 20, dsn=options.psql_dsn)
 
+    prefix = r'(?P<prefix>[\d\w-]+)'
+    file = r'/(?P<file_path>[/\d\w-]+)'
+
     application = Application([
-        (r'^/api/v0/files/(?P<prefix>[\d\w-]+)/(?P<file_path>[/\d\w-]+)', FileHandler, dict(
+        (r'^/api/v0/files/' + prefix + file, FileHandler, dict(
+            get_pubsub_cls=get_pubsub_class,
             transfer_cls=get_transfer_cls,
             get_auth_cls=get_auth_class,
             get_cache_cls=cache_cls,
             database_pool=database_pool,
             concurrent_transfers=options.transfers,
+        )),
+        (r'^/api/v0/websocket/' + prefix + file, FileWebSocketHandler, dict(
+            get_pubsub_cls=get_pubsub_class,
+        )),
+        (r'^/api/v0/websocket/' + prefix, PrefixWebSocketHandler, dict(
+            get_pubsub_cls=get_pubsub_class,
+            get_auth_cls=get_auth_class,
+            get_cache_cls=cache_cls,
+            database_pool=database_pool,
         )),
         (r'^/api/v0/prefix/', PrefixHandler, dict(
             get_cache_cls=cache_cls,
