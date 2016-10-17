@@ -48,8 +48,8 @@ import sys
 
 import uwsgi
 
+import tornado
 from tornado.options import options
-from tornado.ioloop import IOLoop
 from tornado.httpserver import HTTPServer
 
 from prometheus_client import start_http_server
@@ -106,6 +106,8 @@ def configure_logging():
         conf_dictionary = json.load(conf)
         logging.config.dictConfig(conf_dictionary)
 
+tornado.platform.asyncio.AsyncIOMainLoop().install()
+
 # Parse configuration from uWSGI config
 apply_config_dict(uwsgi.opt, prefix='block-')
 # Parse command line as well (from --pyargv)
@@ -120,7 +122,10 @@ signal.signal(signal.SIGHUP, stop_ioloop)
 # spawn a handler for every uWSGI socket
 for fd in uwsgi.sockets:
     spawn_on_socket(fd)
-loop = IOLoop.current()
-loop.set_blocking_log_threshold(1)
+
+loop = tornado.ioloop.IOLoop.current()
+
+# set_blocking_log_threshold is an unique feature of Tornado's own IO loop, and not available with the asyncio implementations
+# loop.set_blocking_log_threshold(1)
 loop.start()
 uwsgi.log('Worker %s dead.' % uwsgi.worker_id())

@@ -3,10 +3,12 @@ from functools import partial
 
 import pytest
 from prometheus_client import REGISTRY
-from tornado.httpclient import HTTPError
+from tornado.httpclient import HTTPError, HTTPRequest
 from tornado.options import options
 from glinda.testing import services
 from unittest.mock import call
+
+from tornado.websocket import websocket_connect
 
 from blockserver.backend.auth import DummyAuth
 
@@ -368,3 +370,112 @@ def test_database_finish_called_in_quota(backend, http_client, headers, base_url
     response = yield http_client.fetch(url, method='GET', headers=headers, raise_error=True)
     assert response.code == 200, response.body.decode('utf-8')
     finish_db.assert_called_with()
+
+
+@pytest.fixture()
+def websocket_headers():
+    return {'Sec-WebSocket-Protocol': 'v0.ws.block.qabel.de'}
+
+
+@pytest.fixture()
+def websocket_file_connector(path, websocket_headers):
+    path = path.replace('http://', 'ws://')
+    return websocket_connect(HTTPRequest(url=path + '/ws', headers=websocket_headers))
+
+
+@pytest.fixture()
+def websocket_prefix_connector(base_url, prefix, websocket_headers):
+    def connector(extra_headers={}):
+        path = base_url.replace('http://', 'ws://') + '/api/v0/files/' + prefix + '/ws'
+        headers = websocket_headers
+        headers.update(extra_headers)
+        return websocket_connect(HTTPRequest(url=path, headers=headers))
+    return connector
+
+
+@pytest.mark.gen_test
+def test_ws_post(backend, http_client, path, file_path, websocket_file_connector, headers, prefix):
+    conn = yield websocket_file_connector
+
+    response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers)
+    assert response.code == 204
+
+    msg = yield conn.read_message()
+    assert msg
+    msg = json.loads(msg)
+    assert msg['operation'] == 'POST'
+    assert msg['prefix'] == prefix
+    assert file_path.startswith('/')
+    assert msg['path'] == file_path[1:]  # file_path is /..., path is just the path, no leading slash
+    assert msg['etag'] == response.headers['ETag']
+
+
+@pytest.mark.gen_test
+def test_ws_delete(backend, http_client, path, file_path, websocket_file_connector, headers, prefix):
+    # n.b. moving this line around wouldn't matter much -- it's largely undefined when subscribers start to get messages
+    # in redis' pubsub mechanism. In this setup it works out nicely, though, just like you'd expect a buffering server to behave.
+    conn = yield websocket_file_connector
+
+    response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers)
+    assert response.code == 204
+
+    response = yield http_client.fetch(path, method='DELETE', headers=headers)
+    assert response.code == 204
+
+    msg = yield conn.read_message()
+    msg = json.loads(msg)
+    assert msg['operation'] == 'POST'
+
+    msg = yield conn.read_message()
+    msg = json.loads(msg)
+    assert msg['operation'] == 'DELETE'
+
+    assert msg['prefix'] == prefix
+    assert file_path.startswith('/')
+    assert msg['path'] == file_path[1:]  # file_path is /..., path is just the path, no leading slash
+    assert 'etag' not in msg
+
+
+@pytest.mark.gen_test
+def test_ws_not_on_blocks(backend, http_server, path, websocket_headers):
+    try:
+        path = path.replace('http://', 'ws://')
+        yield websocket_connect(HTTPRequest(url=path + 'blocks/asdf/ws', headers=websocket_headers))
+        assert False, 'Did not raise'
+    except HTTPError as error:
+        assert error.code == 405
+
+
+@pytest.mark.gen_test
+def test_ws_prefix_post(backend, http_client, path, file_path, websocket_prefix_connector, headers, prefix):
+    conn = yield websocket_prefix_connector(extra_headers=headers)
+
+    response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers)
+    assert response.code == 204
+
+    msg = yield conn.read_message()
+    assert msg
+    msg = json.loads(msg)
+    assert msg['operation'] == 'POST'
+    assert msg['prefix'] == prefix
+    assert file_path.startswith('/')
+    assert msg['path'] == file_path[1:]  # file_path is /..., path is just the path, no leading slash
+    assert msg['etag'] == response.headers['ETag']
+
+
+@pytest.mark.gen_test
+def test_ws_prefix_no_authorization(backend, http_server, websocket_prefix_connector):
+    try:
+        yield websocket_prefix_connector()
+        assert False, 'Did not raise'
+    except HTTPError as error:
+        assert error.code == 403
+
+
+@pytest.mark.gen_test
+def test_ws_prefix_wrong_authorization(backend, http_server, websocket_prefix_connector):
+    try:
+        yield websocket_prefix_connector(extra_headers={'Authorization': 'Token elite haxx0r'})
+        assert False, 'Did not raise'
+    except HTTPError as error:
+        assert error.code == 403
