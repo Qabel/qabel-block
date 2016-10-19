@@ -390,7 +390,7 @@ class PushWebSocketHandler(WebSocketHandler):
         yield self.process_messages()
 
     def on_close(self, code=None, reason=None):
-        self.logger.info('Connection closed (code=%d, reason=%r)', code, reason)
+        self.logger.info('Connection closed (code=%s, reason=%r)', code, reason)
         self.pubsub.close()
         mon.WEBSOCKET_CONNECTIONS.dec()
         mon.WEBSOCKET_CONNECTION_DURATION.observe(perf_counter() - self._open_time)
