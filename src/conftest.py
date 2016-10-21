@@ -25,7 +25,7 @@ from blockserver.backend.database import PostgresUserDatabase
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 ALEMBIC_CONFIG = os.path.join(BASEDIR, 'alembic.ini')
 
-transfer_module.BUCKET = 'qabelbox'
+options.s3_bucket = 'qabelbox'
 
 
 @pytest.fixture
