@@ -407,8 +407,11 @@ class PushWebSocketHandler(WebSocketHandler):
 
     async def process_messages(self):
         async for message in self.pubsub:
-            self.write_message(message)
-            mon.WEBSOCKET_MESSAGES.inc()
+            try:
+                self.write_message(message)
+                mon.WEBSOCKET_MESSAGES.inc()
+            except WebSocketClosedError:
+                pass
 
 
 # noinspection PyMethodOverriding,PyAbstractClass
