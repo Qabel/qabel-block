@@ -194,7 +194,8 @@ class LocalTransfer(AbstractTransfer):
             if os_error.errno in [errno.ENOTSUP, errno.EXDEV, errno.EPERM]:
                 # if the error is benign (tried to rename across devices or it's just not supported),
                 # make a real copy
-                self.logger.exception("error rename(2)ing from StorObj.local_file to local-storage dir, trying real copy")
+                self.logger.warning('error rename(2)ing from StorObj.local_file to local-storage dir, trying real copy: %s - '
+                                    'Fixing the configuration (TMPDIR/TEMP/TMP) will improve performance.', os_error)
                 return self.atomic_copy(source, destination)
             else:
                 raise
