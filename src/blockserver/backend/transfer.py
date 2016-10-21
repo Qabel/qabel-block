@@ -4,7 +4,6 @@ import boto3
 import errno
 import logging
 import tempfile
-import random
 import os
 import shutil
 from abc import ABC, abstractmethod
