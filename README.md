@@ -171,6 +171,10 @@ Available storage backends:
       --redis-port                     Port of the redis server (default 6379)
       --transfers                      Thread pool size for transfers (default 10)
 
+    S3 backend options:
+
+      --s3-bucket                      Name of S3 bucket (default qabel)
+
     Tornado Logging options:
 
       --log-file-max-size              max size of log files before rollover

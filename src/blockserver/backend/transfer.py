@@ -12,7 +12,12 @@ from pathlib import Path
 
 from botocore.exceptions import ClientError
 
+from tornado.options import define, options
+
 from blockserver import monitoring as mon
+
+define('s3_bucket', help='Name of S3 bucket', default='qabel')
+
 
 StorageObject = NamedTuple('StorageObject',
                            [('prefix', str), ('file_path', str),
@@ -25,8 +30,6 @@ StorageObject.__new__.__defaults__ = (None,) * len(StorageObject._fields)
 def file_key(storage_object: StorageObject):
     return '{}/{}'.format(storage_object.prefix, storage_object.file_path)
 
-REGION = 'eu-west-1'
-BUCKET = 'qabel'
 
 
 class AbstractTransfer(ABC):
@@ -71,7 +74,7 @@ class S3Transfer(AbstractTransfer):
             cached = self._from_cache(storage_object)
         except KeyError:
             with mon.SUMMARY_S3_REQUESTS.time():
-                obj = self.s3.Object(BUCKET, file_key(storage_object))
+                obj = self.s3.Object(options.s3_bucket, file_key(storage_object))
                 etag, size = self._get_meta_info(obj)
                 if etag is not None:
                     self._to_cache(storage_object._replace(size=size, etag=etag))
@@ -80,7 +83,7 @@ class S3Transfer(AbstractTransfer):
 
     @mon.TIME_IN_TRANSFER_STORE.time()
     def store(self, storage_object: StorageObject):
-        obj = self.s3.Object(BUCKET, file_key(storage_object))
+        obj = self.s3.Object(options.s3_bucket, file_key(storage_object))
         try:
             cached = self._from_cache(storage_object)
         except KeyError:
@@ -118,7 +121,7 @@ class S3Transfer(AbstractTransfer):
         else:
             if cached.etag == storage_object.etag:
                 return storage_object._replace(fd=None)
-        obj = self.s3.Object(BUCKET, file_key(storage_object))
+        obj = self.s3.Object(options.s3_bucket, file_key(storage_object))
         with mon.SUMMARY_S3_REQUESTS.time():
             try:
                 if storage_object.etag:
@@ -140,7 +143,7 @@ class S3Transfer(AbstractTransfer):
             cached = self._from_cache(storage_object)
         except KeyError:
             with mon.SUMMARY_S3_REQUESTS.time():
-                obj = self.s3.Object(BUCKET, file_key(storage_object))
+                obj = self.s3.Object(options.s3_bucket, file_key(storage_object))
                 etag, size = self._get_meta_info(obj)
                 if etag is not None:
                     meta_object = storage_object._replace(size=size, etag=etag)
@@ -151,7 +154,7 @@ class S3Transfer(AbstractTransfer):
 
     @mon.TIME_IN_TRANSFER_DELETE.time()
     def delete(self, storage_object):
-        obj = self.s3.Object(BUCKET, file_key(storage_object))
+        obj = self.s3.Object(options.s3_bucket, file_key(storage_object))
         with mon.SUMMARY_S3_REQUESTS.time():
             _, size = self._get_meta_info(obj)
         with mon.SUMMARY_S3_REQUESTS.time():
