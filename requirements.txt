@@ -1,7 +1,7 @@
 hiredis==0.2.0
 glinda==0.0.3
 boto3==1.2.3
-pytest==2.8.7
+pytest==3.0.5
 tornado==4.3
 redis==2.10.5
 pytest-tornado==0.4.4
@@ -9,7 +9,7 @@ prometheus_client==0.0.13
 wrapt==1.10.6
 asyncio==3.4.3
 psycopg2==2.6.1
-pytest-dbfixtures==0.13.1
+pytest-postgresql==1.1.1
 pytest-mock==0.11.0
 alembic==0.8.5
 invoke==0.13.0
