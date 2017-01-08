@@ -8,12 +8,12 @@ import tempfile
 import traceback
 from tempfile import NamedTemporaryFile
 
+import psycopg2
 import tornado
 from alembic.command import upgrade
 from alembic.config import Config
 from glinda.testing import services
-from pytest_dbfixtures.factories.postgresql import init_postgresql_database
-from pytest_dbfixtures.utils import try_import
+from pytest_postgresql.factories import get_config, init_postgresql_database
 from tornado.options import options
 
 import blockserver.backend.cache as cache_backends
@@ -153,14 +153,15 @@ def apply_migrations(user, host, port, db):
 
 @pytest.fixture(scope='session')
 def pg_connection(request, postgresql_proc):
-    psycopg2, config = try_import('psycopg2', request)
+    config = get_config(request)
+    pg_user = config['user']
     pg_host = postgresql_proc.host
     pg_port = postgresql_proc.port
-    pg_db = config.postgresql.db
+    pg_db = config['db'] = 'tests'
 
-    init_postgresql_database(psycopg2, config.postgresql.user, pg_host, pg_port, pg_db)
-    apply_migrations(config.postgresql.user, pg_host, pg_port, pg_db)
-    conn = psycopg2.connect(dbname=pg_db, user=config.postgresql.user,
+    init_postgresql_database(pg_user, pg_host, pg_port, pg_db)
+    apply_migrations(pg_user, pg_host, pg_port, pg_db)
+    conn = psycopg2.connect(dbname=pg_db, user=pg_user,
                             host=pg_host, port=pg_port)
     return conn
 
