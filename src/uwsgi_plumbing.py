@@ -51,7 +51,12 @@ import sys
 import time
 import tracemalloc
 
-import uwsgi
+try:
+    import uwsgi
+except ImportError:
+    print('This is not a Python script. This can only run inside uWSGI.', file=sys.stderr)
+    print(__doc__, file=sys.stderr)
+    sys.exit(1)
 
 import tornado
 from tornado.options import options
