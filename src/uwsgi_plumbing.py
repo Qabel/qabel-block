@@ -61,12 +61,17 @@ from prometheus_client import start_http_server
 
 from blockserver.server import make_app
 
+worker_id = uwsgi.worker_id()
+
 
 def delayed_dump(signo, frame):
     # Avoid intermingling the output of all the workers
-    id = uwsgi.worker_id()
-    time.sleep(id / 4)
-    print('Worker %s dumping all threads' % id)
+    time.sleep(worker_id / 4)
+    print()
+    msg = 'Worker %d (PID %d) dumping all threads' % (worker_id, os.getpid())
+    print('-' * len(msg))
+    print(msg)
+    print('-' * len(msg))
     faulthandler.dump_traceback()
 
 
@@ -85,6 +90,10 @@ class MemoryTracer:
             tracer_usage = tracemalloc.get_tracemalloc_memory()
             print('Stopping acquisition...')
             tracemalloc.stop()
+
+            print('---------------------------')
+            print('Worker %d dumping memtrace' % worker_id)
+            print('---------------------------')
 
             print('Currently mapped', current, 'bytes; peak was', peak, 'bytes')
             print('Tracer used', tracer_usage, 'bytes (before stopping)')
@@ -117,7 +126,6 @@ class MemoryTracer:
 
 
 def spawn_on_socket(fd):
-    worker_id = uwsgi.worker_id()
     application = make_app(debug=options.debug)
     server = HTTPServer(application, xheaders=True, max_body_size=options.max_body_size)
     sock = socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM)
@@ -127,11 +135,11 @@ def spawn_on_socket(fd):
         prometheus_port = options.prometheus_port + worker_id
         uwsgi.log('starting prometheus server on port %d' % prometheus_port)
         start_http_server(prometheus_port)
-    uwsgi.log('tornado plumber reporting for duty on uWSGI worker %s' % worker_id)
+    uwsgi.log('tornado plumber reporting for duty on uWSGI worker %s (pid %d)' % (worker_id, os.getpid()))
 
 
 def stop_ioloop(sig, frame):
-    print('uWSGI worker', uwsgi.worker_id(), 'received signal', sig)
+    print('uWSGI worker', worker_id, 'received signal', sig)
     loop = tornado.ioloop.IOLoop.current()
     loop.add_callback_from_signal(loop.stop)
 
@@ -195,4 +203,4 @@ loop = tornado.ioloop.IOLoop.current()
 # set_blocking_log_threshold is an unique feature of Tornado's own IO loop, and not available with the asyncio implementations
 # loop.set_blocking_log_threshold(1)
 loop.start()
-uwsgi.log('Worker %s dead.' % uwsgi.worker_id())
+uwsgi.log('Worker %s dead.' % worker_id)
