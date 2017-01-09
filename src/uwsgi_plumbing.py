@@ -39,6 +39,7 @@ block_dummy_auth=MAGICFAIRY
 $ uwsgi uwsgi-block.ini
 """
 
+import faulthandler
 import json
 import logging.config
 import os.path
@@ -116,6 +117,11 @@ parse_arguments(sys.argv)
 
 configure_logging()
 
+# Set up faulthandler (USRn are also *manual only* control signals for uWSGI)
+faulthandler.register(signal.SIGUSR1)
+faulthandler.enable()
+
+# uWSGI control signals
 signal.signal(signal.SIGINT, stop_ioloop)
 signal.signal(signal.SIGHUP, stop_ioloop)
 
