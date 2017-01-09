@@ -48,6 +48,7 @@ import os.path
 import signal
 import socket
 import sys
+import time
 import tracemalloc
 
 import uwsgi
@@ -59,6 +60,14 @@ from tornado.httpserver import HTTPServer
 from prometheus_client import start_http_server
 
 from blockserver.server import make_app
+
+
+def delayed_dump(signo, frame):
+    # Avoid intermingling the output of all the workers
+    id = uwsgi.worker_id()
+    time.sleep(id / 4)
+    print('Worker %s dumping all threads' % id)
+    faulthandler.dump_traceback()
 
 
 class MemoryTracer:
@@ -167,7 +176,7 @@ parse_arguments(sys.argv)
 configure_logging()
 
 # Set up faulthandler (USRn are also *manual only* control signals for uWSGI)
-faulthandler.register(signal.SIGUSR1)
+signal.signal(signal.SIGUSR1, delayed_dump)
 faulthandler.enable()
 
 memtracer = MemoryTracer(uwsgi.opt.get('block-memtracer-limit', 10))
