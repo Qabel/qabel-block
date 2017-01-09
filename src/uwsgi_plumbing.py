@@ -42,10 +42,13 @@ $ uwsgi uwsgi-block.ini
 import faulthandler
 import json
 import logging.config
+import linecache
+import os
 import os.path
 import signal
 import socket
 import sys
+import tracemalloc
 
 import uwsgi
 
@@ -56,6 +59,52 @@ from tornado.httpserver import HTTPServer
 from prometheus_client import start_http_server
 
 from blockserver.server import make_app
+
+
+class MemoryTracer:
+    def __init__(self, top_lines=10):
+        self.top_lines = top_lines
+
+    def __call__(self, signo, frame):
+        if not tracemalloc.is_tracing():
+            print('Starting acquisition...')
+            tracemalloc.start()
+        else:
+            print('Collecting snapshot...')
+            snapshot = tracemalloc.take_snapshot()
+            current, peak = tracemalloc.get_traced_memory()
+            tracer_usage = tracemalloc.get_tracemalloc_memory()
+            print('Stopping acquisition...')
+            tracemalloc.stop()
+
+            print('Currently mapped', current, 'bytes; peak was', peak, 'bytes')
+            print('Tracer used', tracer_usage, 'bytes (before stopping)')
+            self.print_top(snapshot, limit=self.top_lines)
+
+    def print_top(self, snapshot, group_by='lineno', limit=10):
+        snapshot = snapshot.filter_traces((
+            tracemalloc.Filter(False, "<frozen importlib._bootstrap>"),
+            tracemalloc.Filter(False, "<unknown>"),
+        ))
+        top_stats = snapshot.statistics(group_by)
+
+        print("Top %s allocators" % limit)
+        for index, stat in enumerate(top_stats[:limit], 1):
+            frame = stat.traceback[0]
+            # replace "/path/to/module/file.py" with "module/file.py"
+            filename = os.sep.join(frame.filename.split(os.sep)[-2:])
+            print("#%s: %s:%s: %.1f KiB"
+                  % (index, filename, frame.lineno, stat.size / 1024))
+            line = linecache.getline(frame.filename, frame.lineno).strip()
+            if line:
+                print('    %s' % line)
+
+        other = top_stats[limit:]
+        if other:
+            size = sum(stat.size for stat in other)
+            print("%s other: %.1f KiB" % (len(other), size / 1024))
+        total = sum(stat.size for stat in top_stats)
+        print("Total allocated size: %.1f KiB" % (total / 1024))
 
 
 def spawn_on_socket(fd):
@@ -120,6 +169,9 @@ configure_logging()
 # Set up faulthandler (USRn are also *manual only* control signals for uWSGI)
 faulthandler.register(signal.SIGUSR1)
 faulthandler.enable()
+
+memtracer = MemoryTracer(uwsgi.opt.get('block-memtracer-limit', 10))
+signal.signal(signal.SIGUSR2, memtracer)
 
 # uWSGI control signals
 signal.signal(signal.SIGINT, stop_ioloop)
