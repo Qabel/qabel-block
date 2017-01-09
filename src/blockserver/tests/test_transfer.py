@@ -43,23 +43,23 @@ def test_cache_for_etag(testfile, cache, transfer):
     assert transfer.retrieve(uploaded)
 
 
-def test_get_size(testfile, cache, transfer):
+def test_meta_size(testfile, cache, transfer):
     t = transfer
     size = os.path.getsize(testfile)
     assert size != 0
     storage_object = StorageObject('foo', 'bar', local_file=testfile)
     transfer.delete(storage_object)
     uploaded, size_diff = t.store(storage_object)
-    uploaded_size = t.get_size(StorageObject('foo', 'bar'))
+    uploaded_size = t.meta(StorageObject('foo', 'bar')).size
     assert size == uploaded_size
     assert uploaded.size == size
 
 
-def test_get_size_does_not_corrupt_cache(cache, transfer, testfile):
+def test_meta_does_not_corrupt_cache(cache, transfer, testfile):
     storage_object = StorageObject('foo', 'baz', local_file=testfile)
     transfer.store(storage_object)
     cache.flush()
-    transfer.get_size(StorageObject('foo', 'baz'))
+    transfer.meta(StorageObject('foo', 'baz'))
 
 
 def test_meta(testfile, cache, transfer):
