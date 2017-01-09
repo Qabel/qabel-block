@@ -43,10 +43,6 @@ class AbstractTransfer(ABC):
         self.cache.set_storage(storage_object)
 
     @abstractmethod
-    def get_size(self, storage_object: StorageObject) -> int:
-        pass
-
-    @abstractmethod
     def store(self, storage_object: StorageObject) -> Tuple[StorageObject, int]:
         pass
 
@@ -67,18 +63,6 @@ class S3Transfer(AbstractTransfer):
     def __init__(self, cache):
         super().__init__(cache)
         self.s3 = boto3.resource('s3')
-
-    def get_size(self, storage_object: StorageObject) -> int:
-        try:
-            cached = self._from_cache(storage_object)
-        except KeyError:
-            with mon.SUMMARY_S3_REQUESTS.time():
-                obj = self.s3.Object(options.s3_bucket, file_key(storage_object))
-                etag, size = self._get_meta_info(obj)
-                if etag is not None:
-                    self._to_cache(storage_object._replace(size=size, etag=etag))
-        else:
-            return cached.size
 
     @mon.TIME_IN_TRANSFER_STORE.time()
     def store(self, storage_object: StorageObject):
@@ -200,12 +184,10 @@ class LocalTransfer(AbstractTransfer):
             else:
                 raise
 
-    def get_size(self, storage_object: StorageObject) -> int:
-        return getattr(self.meta(storage_object), 'size', 0)
-
     def store(self, storage_object: StorageObject) -> Tuple[StorageObject, int]:
-        old_size = self.get_size(storage_object)
-        if old_size is None:
+        try:
+            old_size = self.meta(storage_object).size
+        except AttributeError:
             old_size = 0
         new_size = os.path.getsize(storage_object.local_file)
         target_path = self.basepath / file_key(storage_object)

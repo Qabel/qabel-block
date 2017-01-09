@@ -3,6 +3,7 @@ import psycopg2
 import json
 import logging
 import logging.config
+from asyncio import wrap_future
 from time import perf_counter
 from prometheus_client import start_http_server
 
@@ -78,29 +79,55 @@ class DatabaseMixin:
         self.finish_database()
 
 
+class TransferConnector:
+    def __init__(self, concurrent_transfers, get_cache_cls, transfer_cls):
+        self._thread_pool = concurrent.futures.ThreadPoolExecutor(concurrent_transfers)
+        self.cache = get_cache_cls()()  # type: cache.AbstractCache
+        self.transfer = transfer_cls()(cache=self.cache)
+
+    @concurrent.run_on_executor(executor='_thread_pool')
+    def delete_file(self, prefix, file_path):
+        return self.transfer.delete(StorageObject(prefix, file_path, None, None))
+
+    @concurrent.run_on_executor(executor='_thread_pool')
+    def store_file(self, prefix, file_path, filename):
+        return self.transfer.store(StorageObject(prefix, file_path, None, filename))
+
+    @concurrent.run_on_executor(executor='_thread_pool')
+    def retrieve_file(self, prefix, file_path, etag):
+        return self.transfer.retrieve(StorageObject(prefix, file_path, etag, None))
+
+    @concurrent.run_on_executor(executor='_thread_pool')
+    def meta(self, storage_object):
+        return self.transfer.meta(storage_object)
+
+    async def get_size(self, storage_object):
+        try:
+            return (await wrap_future(self.meta(storage_object))).size
+        except AttributeError:
+            return 0
+
+
 # noinspection PyMethodOverriding
 @stream_request_body
 class FileHandler(DatabaseMixin, RequestHandler):
     auth = None
     streamer = None
 
-    def initialize(self, get_pubsub_cls, transfer_cls, get_auth_cls, get_cache_cls, database_pool,
-                   concurrent_transfers: int=10):
+    def initialize(self, get_pubsub_cls, transfer_cls, get_auth_cls, get_cache_cls, database_pool, transfer_connector):
         """
         :param get_pubsub_cls: A function that returns a AbstractPublishSubscribe implementation
         :param get_cache_class: A function that returns a Cache class
         :param get_auth_cls: A function that returns a callback used for authorization
         :param database_pool: Postgresql database pool
         :param transfer_cls: A function that returns a Transfer class
-        :param concurrent_transfers: Size of the thread pool used for transfers
         :return:
         """
-        self._thread_pool = concurrent.futures.ThreadPoolExecutor(options.transfers)
         self.cache = get_cache_cls()()  # type: cache.AbstractCache
-        self.transfer = transfer_cls()(cache=self.cache)
         self.auth_callback = get_auth_cls()(self.cache)
         self.get_pubsub_cls = get_pubsub_cls
         self.database_pool = database_pool
+        self.transfer_connector = transfer_connector
         self._connection = None
         self.temp = None
 
@@ -181,7 +208,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
     @gen.coroutine
     def get(self, prefix, file_path):
         etag = self.request.headers.get('If-None-Match', None)
-        storage_object = yield self.retrieve_file(prefix, file_path, etag)
+        storage_object = yield self.transfer_connector.retrieve_file(prefix, file_path, etag)
         if storage_object is None:
             raise HTTPError(404, reason="File not found")
         self.set_header('ETag', storage_object.etag)
@@ -207,7 +234,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.finish_database()
 
         self.temp.seek(0)
-        storage_object, size_diff = yield self.store_file(prefix, file_path, self.temp.name)
+        storage_object, size_diff = yield self.transfer_connector.store_file(prefix, file_path, self.temp.name)
         self.temp.close()
         mon.TRAFFIC_REQUEST.inc(storage_object.size)
         yield self.save_size_log(prefix, size_diff)
@@ -224,10 +251,11 @@ class FileHandler(DatabaseMixin, RequestHandler):
         })
         self.finish()
 
+    @gen.coroutine
     def check_post_etag(self, prefix, file_path, etag):
         if not etag:
             return True
-        stored_object = self.transfer.meta(StorageObject(prefix, file_path))
+        stored_object = yield self.transfer_connector.meta(StorageObject(prefix, file_path))
         if not stored_object:
             self.set_status(412, reason='If-Match ETag did not match: object does not exist.')
             self.finish()
@@ -243,7 +271,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
         used_quota = (await self.get_database()).get_size(self.user.user_id)
         quota_reached = used_quota + file_size > self.user.quota
         is_block = file_path.startswith('block/')
-        old_size = self.transfer.get_size(StorageObject(prefix, file_path))
+        old_size = await self.transfer_connector.get_size(StorageObject(prefix, file_path))
         if old_size is None:
             is_overwrite = False
             size_change = file_size
@@ -256,7 +284,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
 
     @gen.coroutine
     def delete(self, prefix, file_path):
-        size = yield self.delete_file(prefix, file_path)
+        size = yield self.transfer_connector.delete_file(prefix, file_path)
         yield self.save_size_log(prefix, -size)
         self.set_status(204)
         path = '{}/{}'.format(prefix, file_path)
@@ -267,18 +295,6 @@ class FileHandler(DatabaseMixin, RequestHandler):
             'path': path,
         })
         self.finish()
-
-    @concurrent.run_on_executor(executor='_thread_pool')
-    def delete_file(self, prefix, file_path):
-        return self.transfer.delete(StorageObject(prefix, file_path, None, None))
-
-    @concurrent.run_on_executor(executor='_thread_pool')
-    def store_file(self, prefix, file_path, filename):
-        return self.transfer.store(StorageObject(prefix, file_path, None, filename))
-
-    @concurrent.run_on_executor(executor='_thread_pool')
-    def retrieve_file(self, prefix, file_path, etag):
-        return self.transfer.retrieve(StorageObject(prefix, file_path, etag, None))
 
     def on_finish(self):
         super().on_finish()
@@ -497,6 +513,12 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
     if database_pool is None:
         database_pool = SimpleConnectionPool(1, 20, dsn=options.psql_dsn)
 
+    transfer_connector = TransferConnector(
+        concurrent_transfers=options.transfers,
+        get_cache_cls=cache_cls,
+        transfer_cls=get_transfer_cls,
+    )
+
     prefix = r'(?P<prefix>[\d\w-]+)'
     file = r'/(?P<file_path>[/\d\w-]+)'
 
@@ -507,7 +529,7 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
             get_auth_cls=get_auth_class,
             get_cache_cls=cache_cls,
             database_pool=database_pool,
-            concurrent_transfers=options.transfers,
+            transfer_connector=transfer_connector,
         )),
         (r'^/api/v0/websocket/' + prefix + file, FileWebSocketHandler, dict(
             get_pubsub_cls=get_pubsub_class,
