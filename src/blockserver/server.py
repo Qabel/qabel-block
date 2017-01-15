@@ -295,6 +295,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
             'prefix': prefix,
             'path': path,
         })
+        yield pubsub.close()
         self.finish()
 
     def on_finish(self):
