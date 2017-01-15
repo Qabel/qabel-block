@@ -41,10 +41,12 @@ class AsyncRedisPublishSubscribe(AbstractPublishSubscribe):
         if not self._redis:
             loop = ioloop.IOLoop.current().asyncio_loop
             self._redis = await aioredis.create_redis((self.host, self.port), loop=loop)
+            monitoring.PUBSUB_OPEN_CONNECTIONS.inc()
         return self._redis
 
     async def close(self):
         (await self.redis()).close()
+        monitoring.PUBSUB_OPEN_CONNECTIONS.dec()
 
     async def subscribe(self, channel, wildcard=False):
         if wildcard:

@@ -55,6 +55,9 @@ WEBSOCKET_MESSAGES = Counter('websocket_messages',
 PUBSUB_PUBLISHED = Counter('pubsub_published',
                            'Messages published via pubsub')
 
+PUBSUB_OPEN_CONNECTIONS = Gauge('pubsub_connections',
+                                'Open connections to the pubsub broker (normally redis)')
+
 
 def time(metric):
     @asyncio.coroutine
