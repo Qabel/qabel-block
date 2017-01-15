@@ -249,6 +249,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
             'path': path,
             'etag': storage_object.etag,
         })
+        yield pubsub.close()
         self.finish()
 
     @gen.coroutine
