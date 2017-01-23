@@ -1,27 +1,32 @@
 import shutil
-import psycopg2
 import json
+import tempfile
 import logging
 import logging.config
 from asyncio import wrap_future
+from functools import partial
 from time import perf_counter
+
 from prometheus_client import start_http_server
 
-import tempfile
+import psycopg2
+from psycopg2.pool import SimpleConnectionPool
+
+import aioredis
+
 import tornado
 import tornado.httpserver
-from functools import partial
 from tornado import concurrent
 from tornado import gen
+from tornado import ioloop
 from tornado.options import define, options
 from tornado.web import Application, RequestHandler, stream_request_body, Finish, HTTPError
 from tornado.websocket import WebSocketHandler, WebSocketClosedError
 
+from blockserver import monitoring as mon
 from blockserver.backend import cache, auth, pubsub
 from blockserver.backend.transfer import StorageObject, S3Transfer, LocalTransfer
 from blockserver.backend.database import PostgresUserDatabase
-from psycopg2.pool import SimpleConnectionPool
-from blockserver import monitoring as mon
 from blockserver.backend.quota import QuotaPolicy
 
 define('debug', help="Enable debug output for tornado", default=False)
@@ -114,9 +119,9 @@ class FileHandler(DatabaseMixin, RequestHandler):
     auth = None
     streamer = None
 
-    def initialize(self, get_pubsub_cls, transfer_cls, get_auth_cls, get_cache_cls, database_pool, transfer_connector):
+    def initialize(self, publish, transfer_cls, get_auth_cls, get_cache_cls, database_pool, transfer_connector):
         """
-        :param get_pubsub_cls: A function that returns a AbstractPublishSubscribe implementation
+        :param publish: Async function that publishes a dictionary on a channl.
         :param get_cache_class: A function that returns a Cache class
         :param get_auth_cls: A function that returns a callback used for authorization
         :param database_pool: Postgresql database pool
@@ -125,7 +130,7 @@ class FileHandler(DatabaseMixin, RequestHandler):
         """
         self.cache = get_cache_cls()()  # type: cache.AbstractCache
         self.auth_callback = get_auth_cls()(self.cache)
-        self.get_pubsub_cls = get_pubsub_cls
+        self.publish = publish
         self.database_pool = database_pool
         self.transfer_connector = transfer_connector
         self._connection = None
@@ -242,14 +247,12 @@ class FileHandler(DatabaseMixin, RequestHandler):
         self.set_header('ETag', storage_object.etag)
 
         path = '{}/{}'.format(prefix, file_path)
-        pubsub = self.get_pubsub_cls()()
-        yield pubsub.publish(path.encode(), {
+        yield self.publish(path.encode(), {
             'operation': 'POST',
             'prefix': prefix,
             'path': path,
             'etag': storage_object.etag,
         })
-        yield pubsub.close()
         self.finish()
 
     @gen.coroutine
@@ -289,13 +292,11 @@ class FileHandler(DatabaseMixin, RequestHandler):
         yield self.save_size_log(prefix, -size)
         self.set_status(204)
         path = '{}/{}'.format(prefix, file_path)
-        pubsub = self.get_pubsub_cls()()
-        yield pubsub.publish(path.encode(), {
+        yield self.publish(path.encode(), {
             'operation': 'DELETE',
             'prefix': prefix,
             'path': path,
         })
-        yield pubsub.close()
         self.finish()
 
     def on_finish(self):
@@ -395,8 +396,8 @@ class PushWebSocketHandler(WebSocketHandler):
             raise HTTPError(405, log_message='WebSockets are not permitted on blocks.')
         mon.WEBSOCKET_CONNECTIONS.inc()
 
-    def initialize(self, get_pubsub_cls):
-        self.pubsub = get_pubsub_cls()()
+    def initialize(self, get_sub):
+        self.pubsub = get_sub()
 
     @gen.coroutine
     def listen(self, channel, wildcard=False):
@@ -440,8 +441,8 @@ class FileWebSocketHandler(PushWebSocketHandler):
 
 # noinspection PyMethodOverriding,PyAbstractClass
 class PrefixWebSocketHandler(AuthorizationMixin, DatabaseMixin, PushWebSocketHandler):
-    def initialize(self, get_pubsub_cls, get_auth_cls, get_cache_cls, database_pool):
-        super().initialize(get_pubsub_cls)
+    def initialize(self, get_sub, get_auth_cls, get_cache_cls, database_pool):
+        super().initialize(get_sub)
         self.cache = get_cache_cls()()
         self.auth_callback = get_auth_cls()(self.cache)
         self.database_pool = database_pool
@@ -485,14 +486,22 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
     if options.dummy and not debug:
         raise RuntimeError("Dummy backend is only allowed in debug mode")
 
+    redis_pool = aioredis.RedisPool(
+        address=(options.redis_host, options.redis_port),
+        minsize=5,
+        maxsize=100,
+        commands_factory=aioredis.Redis,
+        loop=ioloop.IOLoop.current().asyncio_loop,
+    )
+
     def get_auth_class():
         if options.dummy_auth:
             return auth.DummyAuth
         else:
             return auth.Auth
 
-    def get_pubsub_class():
-        return partial(pubsub.AsyncRedisPublishSubscribe, host=options.redis_host, port=options.redis_port)
+    get_sub = partial(pubsub.AsyncRedisSubscribe, redis_pool)
+    publish = partial(pubsub.redis_publish, redis_pool)
 
     if cache_cls is None:
         def cache_cls():
@@ -526,7 +535,7 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
 
     application = Application([
         (r'^/api/v0/files/' + prefix + file, FileHandler, dict(
-            get_pubsub_cls=get_pubsub_class,
+            publish=publish,
             transfer_cls=get_transfer_cls,
             get_auth_cls=get_auth_class,
             get_cache_cls=cache_cls,
@@ -534,10 +543,10 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
             transfer_connector=transfer_connector,
         )),
         (r'^/api/v0/websocket/' + prefix + file, FileWebSocketHandler, dict(
-            get_pubsub_cls=get_pubsub_class,
+            get_sub=get_sub,
         )),
         (r'^/api/v0/websocket/' + prefix, PrefixWebSocketHandler, dict(
-            get_pubsub_cls=get_pubsub_class,
+            get_sub=get_sub,
             get_auth_cls=get_auth_class,
             get_cache_cls=cache_cls,
             database_pool=database_pool,
