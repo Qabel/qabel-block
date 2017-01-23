@@ -130,13 +130,7 @@ def backend(request, cache):
 
 @pytest.fixture
 def cache(request):
-    cache_backend = request.param
-    if cache_backend == 'dummy':
-        cache_object = cache_backends.DummyCache()
-    elif cache_backend == 'redis':
-        cache_object = cache_backends.RedisCache(host='localhost', port='6379')
-    else:
-        raise ValueError('Unknown backend')
+    cache_object = cache_backends.RedisCache(host='localhost', port='6379')
     cache_object.flush()
     return cache_object
 
@@ -286,8 +280,6 @@ def pytest_configure(config):
 def pytest_addoption(parser):
     parser.addoption("--dummy", action="store_true",
                      help="run only with the dummy backend")
-    parser.addoption("--dummy-cache", action="store_true",
-                     help="run only with the dummy cache")
 
 
 def pytest_generate_tests(metafunc):
@@ -301,11 +293,6 @@ def pytest_generate_tests(metafunc):
         if not metafunc.config.option.dummy:
             backends.append('s3')
         metafunc.parametrize("transfer", backends, indirect=True)
-    if 'cache' in metafunc.fixturenames:
-        backends = ['dummy']
-        if not metafunc.config.option.dummy_cache:
-            backends.append('redis')
-        metafunc.parametrize("cache", backends, indirect=True)
 
 
 def make_coroutine(mock):

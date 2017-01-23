@@ -47,8 +47,6 @@ define('local_storage',
        help='Store files locally in *specified directory* instead of S3', default='')
 define('dummy_log', help="Instead of calling the accounting server for logging, log to stdout",
        default=False)
-define('dummy_cache', help="Use an in memory cache instead of redis",
-       default=False)
 define('redis_host', help="Hostname of the redis server", default='localhost')
 define('redis_port', help="Port of the redis server", default=6379)
 define('max_body_size', help="Maximum size for uploads", default=2147483648)
@@ -505,10 +503,7 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
 
     if cache_cls is None:
         def cache_cls():
-            if options.dummy_cache:
-                return cache.DummyCache
-            else:
-                return partial(cache.RedisCache, host=options.redis_host, port=options.redis_port)
+            return partial(cache.RedisCache, host=options.redis_host, port=options.redis_port)
 
     if options.dummy:
         dummy_dir = tempfile.mkdtemp()

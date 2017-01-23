@@ -149,8 +149,6 @@ Available storage backends:
       --dummy-auth                     Authenticate with this authentication token
                                        [Example: MAGICFARYDUST] for the prefix
                                        'test'
-      --dummy-cache                    Use an in memory cache instead of redis
-                                       (default False)
       --dummy-log                      Instead of calling the accounting server for
                                        logging, log to stdout (default False)
       --local-storage                  Store files locally in *specified directory*
