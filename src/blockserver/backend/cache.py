@@ -97,8 +97,8 @@ class RedisCache(AbstractCache):
     Cache ETags from StorageObjects in redis
     """
 
-    def __init__(self, host, port):
-        self._cache = redis.StrictRedis(host=host, port=port)
+    def __init__(self, **redis_kwargs):
+        self._cache = redis.StrictRedis(**redis_kwargs)
 
     def _set_expire(self, key, time_to_live):
         self._cache.expire(key, time_to_live)

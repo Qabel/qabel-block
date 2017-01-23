@@ -12,6 +12,8 @@ from prometheus_client import start_http_server
 import psycopg2
 from psycopg2.pool import SimpleConnectionPool
 
+import redis
+
 import aioredis
 
 import tornado
@@ -482,7 +484,7 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
     if options.dummy and not debug:
         raise RuntimeError("Dummy backend is only allowed in debug mode")
 
-    redis_pool = aioredis.RedisPool(
+    async_redis_pool = aioredis.RedisPool(
         address=(options.redis_host, options.redis_port),
         minsize=5,
         maxsize=100,
@@ -490,18 +492,20 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
         loop=ioloop.IOLoop.current().asyncio_loop,
     )
 
+    redis_pool = redis.ConnectionPool(host=options.redis_host, port=options.redis_port)
+
     def get_auth_class():
         if options.dummy_auth:
             return auth.DummyAuth
         else:
             return auth.Auth
 
-    get_sub = partial(pubsub.AsyncRedisSubscribe, redis_pool)
-    publish = partial(pubsub.redis_publish, redis_pool)
+    get_sub = partial(pubsub.AsyncRedisSubscribe, async_redis_pool)
+    publish = partial(pubsub.redis_publish, async_redis_pool)
 
     if cache_cls is None:
         def cache_cls():
-            return partial(cache.RedisCache, host=options.redis_host, port=options.redis_port)
+            return partial(cache.RedisCache, connection_pool=redis_pool)
 
     if options.dummy:
         dummy_dir = tempfile.mkdtemp()
