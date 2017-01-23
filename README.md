@@ -149,8 +149,6 @@ Available storage backends:
       --dummy-auth                     Authenticate with this authentication token
                                        [Example: MAGICFARYDUST] for the prefix
                                        'test'
-      --dummy-log                      Instead of calling the accounting server for
-                                       logging, log to stdout (default False)
       --local-storage                  Store files locally in *specified directory*
                                        instead of S3
       --logging-config                 Config file for logging, see https://docs.py

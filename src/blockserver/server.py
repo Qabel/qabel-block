@@ -45,8 +45,6 @@ define('dummy',
        help="Use a local and temporary storage backend instead of s3 backend", default=False)
 define('local_storage',
        help='Store files locally in *specified directory* instead of S3', default='')
-define('dummy_log', help="Instead of calling the accounting server for logging, log to stdout",
-       default=False)
 define('redis_host', help="Hostname of the redis server", default='localhost')
 define('redis_port', help="Port of the redis server", default=6379)
 define('max_body_size', help="Maximum size for uploads", default=2147483648)
