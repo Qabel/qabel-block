@@ -1,22 +1,21 @@
-import json
-
 import aioredis
 from tornado import ioloop
 
 from .. import monitoring
 
 
-class AbstractPublishSubscribe:
+class AbstractSubscribe:
+    """
+    Subscription interface, part of pubsub.
+
+    First call subscribe(channel), then iterate over this object. When done, close() it.
+    """
+
     async def subscribe(self, channel, wildcard=False):
         """
         Subscribe to *channel*. If *wildcards* are used, then glob-style patterns (* expansion) must be applied.
 
         An instance may only be subscribed to one channel. The latest subscription wins.
-        """
-
-    async def publish(self, channel, message):
-        """
-        Publish *message* dictionary to *channel*.
         """
 
     def __aiter__(self):
@@ -30,34 +29,27 @@ class AbstractPublishSubscribe:
         """
 
 
-class AsyncRedisPublishSubscribe(AbstractPublishSubscribe):
-    def __init__(self, host, port):
-        self.host = host
-        self.port = port
-        self._redis = None
+class AsyncRedisSubscribe(AbstractSubscribe):
+    def __init__(self, connection_pool: aioredis.RedisPool):
+        self.connection_pool = connection_pool
         self.channel = None
-
-    async def redis(self):
-        if not self._redis:
-            loop = ioloop.IOLoop.current().asyncio_loop
-            self._redis = await aioredis.create_redis((self.host, self.port), loop=loop)
-            monitoring.PUBSUB_OPEN_CONNECTIONS.inc()
-        return self._redis
-
-    async def close(self):
-        (await self.redis()).close()
-        monitoring.PUBSUB_OPEN_CONNECTIONS.dec()
+        self.connection = None
 
     async def subscribe(self, channel, wildcard=False):
+        self.connection = await self.connection_pool.acquire()
+        monitoring.PUBSUB_OPEN_CONNECTIONS.inc()
         if wildcard:
-            subscriber = (await self.redis()).psubscribe
+            subscriber = self.connection.psubscribe
         else:
-            subscriber = (await self.redis()).subscribe
+            subscriber = self.connection.subscribe
         self.channel, = await subscriber(channel)
 
-    async def publish(self, channel, message):
-        await (await self.redis()).publish_json(channel, message)
-        monitoring.PUBSUB_PUBLISHED.inc()
+    async def close(self):
+        await self.connection.unsubscribe()
+        self.channel.close()
+        self.connection_pool.release(self.connection)
+        self.connection = None
+        monitoring.PUBSUB_OPEN_CONNECTIONS.dec()
 
     def __aiter__(self):
         # See also: PEP-0525
@@ -73,3 +65,9 @@ class AsyncRedisPublishSubscribe(AbstractPublishSubscribe):
             return message[1]
         else:
             return message
+
+
+async def redis_publish(connection_pool: aioredis.Redis, channel, message):
+    with await connection_pool as connection:
+        await connection.publish_json(channel, message)
+    monitoring.PUBSUB_PUBLISHED.inc()

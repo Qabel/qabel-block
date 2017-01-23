@@ -92,40 +92,13 @@ class AbstractCache(ABC):
         pass
 
 
-class DummyCache(AbstractCache):
-    """
-    Local cache implemented with dict
-    """
-    def __init__(self):
-        self._cache = {}
-
-    def _set(self, key, **values):
-        converted_values = {k: v.encode('UTF-8') if isinstance(v, str) else v
-                            for k, v in values.items()}
-        self._cache[key] = converted_values
-
-    def _get(self, key, *keys):
-        try:
-            values = self._cache[key]
-        except KeyError:
-            return [None] * len(keys)
-        else:
-            return [values[k] for k in keys]
-
-    def _set_expire(self, key, time_to_live):
-        pass
-
-    def flush(self):
-        self._cache = {}
-
-
 class RedisCache(AbstractCache):
     """
     Cache ETags from StorageObjects in redis
     """
 
-    def __init__(self, host, port):
-        self._cache = redis.StrictRedis(host=host, port=port)
+    def __init__(self, **redis_kwargs):
+        self._cache = redis.StrictRedis(**redis_kwargs)
 
     def _set_expire(self, key, time_to_live):
         self._cache.expire(key, time_to_live)

@@ -78,13 +78,11 @@ def io_loop(request):
 def auth_server(service_layer):
     prev_auth = options.dummy_auth
     options.dummy_auth = None
-    options.dummy_log = False
     dummy_acc = options.accounting_host
     auth = service_layer['auth']  # type: services.Service
     options.accounting_host = 'http://' + auth.host
     yield auth
     options.dummy_auth = prev_auth
-    options.dummy_log = True
     options.accounting_host = dummy_acc
 
 
@@ -130,13 +128,7 @@ def backend(request, cache):
 
 @pytest.fixture
 def cache(request):
-    cache_backend = request.param
-    if cache_backend == 'dummy':
-        cache_object = cache_backends.DummyCache()
-    elif cache_backend == 'redis':
-        cache_object = cache_backends.RedisCache(host='localhost', port='6379')
-    else:
-        raise ValueError('Unknown backend')
+    cache_object = cache_backends.RedisCache(host='localhost', port='6379')
     cache_object.flush()
     return cache_object
 
@@ -188,11 +180,9 @@ def pg_db(pg_connection):
 @pytest.yield_fixture
 def app(cache, pg_pool, tmpdir):
     prev_auth = options.dummy_auth
-    prev_log = options.dummy_log
     prev_dummy = options.dummy
     prev_lost = options.local_storage
     options.dummy_auth = 'MAGICFARYDUST'
-    options.dummy_log = True
     if options.dummy:
         # http_client fixture creates a new app for *every* request by default, therefore dummy mode wouldn't work.
         options.dummy = False
@@ -202,7 +192,6 @@ def app(cache, pg_pool, tmpdir):
         database_pool=pg_pool,
         debug=True)
     options.dummy_auth = prev_auth
-    options.dummy_log = prev_log
     options.dummy = prev_dummy
     options.local_storage = prev_lost
 
@@ -286,8 +275,6 @@ def pytest_configure(config):
 def pytest_addoption(parser):
     parser.addoption("--dummy", action="store_true",
                      help="run only with the dummy backend")
-    parser.addoption("--dummy-cache", action="store_true",
-                     help="run only with the dummy cache")
 
 
 def pytest_generate_tests(metafunc):
@@ -301,11 +288,6 @@ def pytest_generate_tests(metafunc):
         if not metafunc.config.option.dummy:
             backends.append('s3')
         metafunc.parametrize("transfer", backends, indirect=True)
-    if 'cache' in metafunc.fixturenames:
-        backends = ['dummy']
-        if not metafunc.config.option.dummy_cache:
-            backends.append('redis')
-        metafunc.parametrize("cache", backends, indirect=True)
 
 
 def make_coroutine(mock):
