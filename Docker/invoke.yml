@@ -1,0 +1,12 @@
+qabel:
+   block:
+      psql_dsn: postgresql://postgres:test@postgres/block_live
+      accounting-host: http://accounting:5000
+      apisecret: asdasdagsdf234dfg35sgsdf3asdf234sdafsadf 
+      redis-host: redis
+      local-storage: /tmp
+      uwsgi:
+         http-socket: :8881
+         processes: 1 
+
+
