@@ -1,7 +1,7 @@
 FROM alpine:3.5
 MAINTAINER Niklas Rust <rust@qabel.de>
 
-RUN apk add 
+RUN apk add \
 	--no-cache \
 	linux-headers \
 	uwsgi \
@@ -17,9 +17,8 @@ apk add \
 pip3 install -U \
 	virtualenv \
 	requests \
-	pip 
+	pip
 ADD . /app
 WORKDIR /app
-COPY Docker/invoke.yml qabel.yaml
 ENTRYPOINT ["bash", "entrypoint.sh"]
 EXPOSE 8881 
