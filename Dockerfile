@@ -20,5 +20,6 @@ pip3 install -U \
 	pip
 ADD . /app
 WORKDIR /app
+RUN sh Docker/bootstrap.sh
 ENTRYPOINT ["bash", "entrypoint.sh"]
 EXPOSE 8881 
