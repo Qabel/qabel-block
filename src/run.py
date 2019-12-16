@@ -5,6 +5,9 @@ from blockserver import server
 from tornado import options
 import signal
 import sys
+import os
+
+SRC_DIR = os.path.dirname(os.path.realpath(__file__))
 
 
 def sigint_handler(sig, frame):
@@ -12,6 +15,7 @@ def sigint_handler(sig, frame):
     asyncio_loop.add_callback_from_signal(asyncio_loop.stop)
     io_loop = IOLoop.current()
     io_loop.add_callback_from_signal(io_loop.stop)
+
 
 signal.signal(signal.SIGINT, sigint_handler)
 

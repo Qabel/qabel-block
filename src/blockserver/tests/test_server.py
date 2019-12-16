@@ -34,7 +34,7 @@ def test_no_body(backend, http_client, path, headers, temp_check):
 
 
 @pytest.mark.gen_test
-def test_no_auth_get(http_client, path, cache):
+def test_no_auth_get(backend, http_client, path, cache):
     cache.flush()
     response = yield http_client.fetch(path, method='GET', raise_error=False)
     assert response.code == 404
@@ -84,7 +84,7 @@ def test_etag_set_on_post(backend, http_client, path, headers):
 def test_etag_post_if_match_aborts_on_non_existing_file(backend, http_client, path, headers):
     headers['If-Match'] = 'something i just made up'
     response = yield http_client.fetch(path, method='POST', body=b'Dummy', headers=headers, raise_error=False)
-    assert response.code == 412
+    assert response.code == 412, response.body
     assert 'ETag' not in response.headers
 
 
@@ -147,7 +147,7 @@ def test_etag_modified(backend, http_client, path, headers):
 
 
 @pytest.mark.gen_test
-def test_auth_backend_called(app, cache, http_client, path, auth_path, headers, auth_server, file_path):
+def test_auth_backend_called(backend, cache, http_client, path, auth_path, headers, auth_server, file_path):
     body = b'Dummy'
     _, prefix, file_name = file_path.split('/')
     auth_server.add_response(services.Request('POST', auth_path),
@@ -157,7 +157,7 @@ def test_auth_backend_called(app, cache, http_client, path, auth_path, headers, 
                                        raise_error=False)
     auth_request = auth_server.get_request(auth_path)
     assert auth_request.headers['APISECRET'] == options.apisecret
-    assert response.code == 204
+    assert response.code == 204, response.body
 
 
 @pytest.mark.gen_test
@@ -167,7 +167,7 @@ def test_no_long_path(backend, http_client, path, headers):
 
 
 @pytest.mark.gen_test
-def test_prefix_auth(app, http_client, prefix_path, user_id, pg_db, auth_server, auth_path):
+def test_prefix_auth(backend, http_client, prefix_path, user_id, pg_db, auth_server, auth_path):
     auth_server.add_response(services.Request('POST', auth_path),
                              services.Response(404))
     response = yield http_client.fetch(prefix_path, method='POST', raise_error=False,
@@ -203,7 +203,7 @@ def test_get_prefixes(app, http_client, prefix_path, user_id, headers, pg_db):
 
 
 @pytest.mark.gen_test
-def test_log_and_monitoring(app, mocker, http_client, path, auth_path, headers,
+def test_log_and_monitoring(backend, mocker, http_client, path, auth_path, headers,
                             auth_server, file_path, prefix):
     mon_traffic = stat_by_name('block_traffic_by_request_sum')
     mon_quota = stat_by_name('block_quota_by_request_sum')
@@ -385,7 +385,9 @@ def websocket_file_connector(path, websocket_headers):
 
 @pytest.fixture()
 def websocket_prefix_connector(base_url, prefix, websocket_headers):
-    def connector(extra_headers={}):
+    def connector(extra_headers=None):
+        if extra_headers is None:
+            extra_headers = {}
         path = base_url.replace('http://', 'ws://') + '/api/v0/websocket/' + prefix
         headers = websocket_headers
         headers.update(extra_headers)

@@ -1,0 +1,34 @@
+version: '3'
+
+volumes:
+  local_block_storage: {}
+
+services:
+  block:
+    build:
+      context: .
+      dockerfile: ./compose/local/block/Dockerfile
+    image: qabel_block_local_block
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - .:/app
+      - local_block_storage:/storage
+    env_file:
+      - ./.envs/.local/.block
+      - ./.envs/.local/.postgres
+    ports:
+      - "8888:8888"
+    command: /start
+
+  postgres:
+    build:
+      context: .
+      dockerfile: ./compose/production/postgres/Dockerfile
+    image: qabel_block_local_postgres
+    env_file:
+      - ./.envs/.local/.postgres
+
+  redis:
+    image: redis:5.0

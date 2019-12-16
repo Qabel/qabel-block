@@ -1,3 +1,4 @@
+from __future__ import annotations
 import redis
 from typing import Dict, List
 

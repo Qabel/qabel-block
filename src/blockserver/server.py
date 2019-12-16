@@ -1,3 +1,4 @@
+from __future__ import annotations
 import shutil
 import json
 import tempfile
@@ -47,7 +48,7 @@ define('dummy',
        help="Use a local and temporary storage backend instead of s3 backend", default=False)
 define('local_storage',
        help='Store files locally in *specified directory* instead of S3', default='')
-define('redis_host', help="Hostname of the redis server", default='localhost')
+define('redis_host', help="Hostname of the redis server", default='redis')
 define('redis_port', help="Port of the redis server", default=6379)
 define('max_body_size', help="Maximum size for uploads", default=2147483648)
 define('prometheus_port', help="Port to start the prometheus metrics server on",
@@ -208,10 +209,9 @@ class FileHandler(DatabaseMixin, RequestHandler):
             raise HTTPError(400, reason="Content-Length too large")
         self.temp.write(chunk)
 
-    @gen.coroutine
-    def get(self, prefix, file_path):
+    async def get(self, prefix, file_path):
         etag = self.request.headers.get('If-None-Match', None)
-        storage_object = yield self.transfer_connector.retrieve_file(prefix, file_path, etag)
+        storage_object = await self.transfer_connector.retrieve_file(prefix, file_path, etag)
         if storage_object is None:
             raise HTTPError(404, reason="File not found")
         self.set_header('ETag', storage_object.etag)
@@ -224,48 +224,46 @@ class FileHandler(DatabaseMixin, RequestHandler):
         shutil.copyfileobj(storage_object.fd, self)
         storage_object.fd.close()
         mon.TRAFFIC_RESPONSE.inc(size)
-        yield self.save_traffic_log(prefix, size)
-        self.finish()
+        await self.save_traffic_log(prefix, size)
+        await self.finish()
 
-    @gen.coroutine
-    def post(self, prefix, file_path):
-        if not self.check_post_etag(prefix, file_path, self.request.headers.get('If-Match')):
+    async def post(self, prefix, file_path):
+        if not await self.check_post_etag(prefix, file_path, self.request.headers.get('If-Match')):
             return
 
         file_size = self.temp.tell()
-        yield self._authorize_upload_request(file_path, file_size, prefix)
+        await self._authorize_upload_request(file_path, file_size, prefix)
         self.finish_database()
 
         self.temp.seek(0)
-        storage_object, size_diff = yield self.transfer_connector.store_file(prefix, file_path, self.temp.name)
+        storage_object, size_diff = await self.transfer_connector.store_file(prefix, file_path, self.temp.name)
         self.temp.close()
         mon.TRAFFIC_REQUEST.inc(storage_object.size)
-        yield self.save_size_log(prefix, size_diff)
+        await self.save_size_log(prefix, size_diff)
         self.set_status(204)
         self.set_header('ETag', storage_object.etag)
 
         path = '{}/{}'.format(prefix, file_path)
-        yield self.publish(path.encode(), {
+        await self.publish(path.encode(), {
             'operation': 'POST',
             'prefix': prefix,
             'path': path,
             'etag': storage_object.etag,
         })
-        self.finish()
+        await self.finish()
 
-    @gen.coroutine
-    def check_post_etag(self, prefix, file_path, etag):
+    async def check_post_etag(self, prefix, file_path, etag):
         if not etag:
             return True
-        stored_object = yield self.transfer_connector.meta(StorageObject(prefix, file_path))
+        stored_object = await self.transfer_connector.meta(StorageObject(prefix, file_path))
         if not stored_object:
             self.set_status(412, reason='If-Match ETag did not match: object does not exist.')
-            self.finish()
+            await self.finish()
             return False
         elif stored_object.etag != etag:
             self.set_status(412, reason='If-Match ETag did not match stored object')
             self.set_header('ETag', stored_object.etag)
-            self.finish()
+            await self.finish()
             return False
         return True
 
@@ -284,18 +282,17 @@ class FileHandler(DatabaseMixin, RequestHandler):
             self.temp.close()
             self._quota_error()
 
-    @gen.coroutine
-    def delete(self, prefix, file_path):
-        size = yield self.transfer_connector.delete_file(prefix, file_path)
-        yield self.save_size_log(prefix, -size)
+    async def delete(self, prefix, file_path):
+        size = await self.transfer_connector.delete_file(prefix, file_path)
+        await self.save_size_log(prefix, -size)
         self.set_status(204)
         path = '{}/{}'.format(prefix, file_path)
-        yield self.publish(path.encode(), {
+        await self.publish(path.encode(), {
             'operation': 'DELETE',
             'prefix': prefix,
             'path': path,
         })
-        self.finish()
+        await self.finish()
 
     def on_finish(self):
         super().on_finish()
@@ -313,9 +310,9 @@ class FileHandler(DatabaseMixin, RequestHandler):
         if size != 0:
             (await self.get_database()).update_size(prefix, size)
             if size > 0:
-                mon.QUOTA_BY_REQUEST.labels({'type': 'increase'}).observe(size)
+                mon.QUOTA_BY_REQUEST.labels(type='increase').observe(size)
             else:
-                mon.QUOTA_BY_REQUEST.labels({'type': 'decrease'}).observe(-size)
+                mon.QUOTA_BY_REQUEST.labels(type='decrease').observe(-size)
 
 
 class AuthorizationMixin:
@@ -345,21 +342,19 @@ class PrefixHandler(AuthorizationMixin, DatabaseMixin, RequestHandler):
         self._connection = None
         self.auth_callback = get_auth_cls()(self.cache)
 
-    @gen.coroutine
-    def get(self):
+    async def get(self):
         self.set_status(200)
-        db = yield self.get_database()
+        db = await self.get_database()
         prefixes = db.get_prefixes(self.user.user_id)
         self.write({'prefixes': prefixes})
-        self.finish()
+        await self.finish()
 
-    @gen.coroutine
-    def post(self):
+    async def post(self):
         self.set_status(201)
-        db = yield self.get_database()
+        db = await self.get_database()
         new_prefix = db.create_prefix(self.user.user_id)
         self.write({'prefix': new_prefix})
-        self.finish()
+        await self.finish()
 
 
 # noinspection PyMethodOverriding,PyAbstractClass
@@ -371,16 +366,15 @@ class QuotaHandler(AuthorizationMixin, DatabaseMixin, RequestHandler):
         self._connection = None
         self.auth_callback = get_auth_cls()(self.cache)
 
-    @gen.coroutine
-    def get(self):
+    async def get(self):
         self.set_status(200)
-        db = yield self.get_database()
+        db = await self.get_database()
         size = db.get_size(self.user.user_id)
         self.write({
             'quota': self.user.quota,
             'size': size
         })
-        self.finish()
+        await self.finish()
 
 
 # noinspection PyMethodOverriding,PyAbstractClass
@@ -397,19 +391,17 @@ class PushWebSocketHandler(WebSocketHandler):
     def initialize(self, get_sub):
         self.pubsub = get_sub()
 
-    @gen.coroutine
-    def listen(self, channel, wildcard=False):
+    async def listen(self, channel, wildcard=False):
         """
         Listen to *channel*. May use *wildcards* in *channel*.
         """
         self._open_time = perf_counter()
-        yield self.pubsub.subscribe(channel, wildcard)
-        yield self.process_messages()
+        await self.pubsub.subscribe(channel, wildcard)
+        await self.process_messages()
 
-    @gen.coroutine
-    def on_close(self, code=None, reason=None):
+    async def on_close(self, code=None, reason=None):
         self.logger.info('Connection closed (code=%s, reason=%r)', code, reason)
-        yield self.pubsub.close()
+        await self.pubsub.close()
         mon.WEBSOCKET_CONNECTIONS.dec()
         mon.WEBSOCKET_CONNECTION_DURATION.observe(perf_counter() - self._open_time)
 
@@ -425,7 +417,7 @@ class PushWebSocketHandler(WebSocketHandler):
     async def process_messages(self):
         async for message in self.pubsub:
             try:
-                self.write_message(message)
+                await self.write_message(message)
                 mon.WEBSOCKET_MESSAGES.inc()
             except WebSocketClosedError:
                 pass
@@ -433,8 +425,8 @@ class PushWebSocketHandler(WebSocketHandler):
 
 # noinspection PyMethodOverriding,PyAbstractClass
 class FileWebSocketHandler(PushWebSocketHandler):
-    def open(self, prefix, file_path):
-        super().listen(channel=prefix + '/' + file_path)
+    async def open(self, prefix, file_path):
+        await super().listen(channel=prefix + '/' + file_path)
 
 
 # noinspection PyMethodOverriding,PyAbstractClass
@@ -446,20 +438,18 @@ class PrefixWebSocketHandler(AuthorizationMixin, DatabaseMixin, PushWebSocketHan
         self.database_pool = database_pool
         self._connection = None
 
-    @gen.coroutine
-    def get(self, prefix):
-        db = yield self.get_database()
+    async def get(self, prefix):
+        db = await self.get_database()
         if not self.bypass_auth and not db.has_prefix(self.user.user_id, prefix):
             raise HTTPError(403, reason='Not authorized for this prefix')
-        super().get(prefix)
+        await super().get(prefix)
 
-    def open(self, prefix):
-        super().listen(channel=prefix + '*', wildcard=True)
+    async def open(self, prefix):
+        await super().listen(channel=prefix + '*', wildcard=True)
 
 
 def main():
     application = make_app(debug=options.debug)
-
     with open(options.logging_config, 'r') as conf:
         conf_dictionary = json.load(conf)
         logging.config.dictConfig(conf_dictionary)
@@ -484,11 +474,10 @@ def make_app(cache_cls=None, database_pool=None, debug=False):
     if options.dummy and not debug:
         raise RuntimeError("Dummy backend is only allowed in debug mode")
 
-    async_redis_pool = aioredis.RedisPool(
+    async_redis_pool = aioredis.ConnectionsPool(
         address=(options.redis_host, options.redis_port),
         minsize=5,
         maxsize=100,
-        commands_factory=aioredis.Redis,
         loop=ioloop.IOLoop.current().asyncio_loop,
     )
 

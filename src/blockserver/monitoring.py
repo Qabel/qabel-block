@@ -1,3 +1,4 @@
+from __future__ import annotations
 from time import perf_counter
 
 import asyncio
@@ -60,15 +61,14 @@ PUBSUB_OPEN_CONNECTIONS = Gauge('pubsub_connections',
 
 
 def time(metric):
-    @asyncio.coroutine
     @wrapt.decorator
-    def decorator(func, _, args, kw):
+    async def decorator(func, _, args, kw):
         def observe():
             metric.observe(perf_counter() - start_time)
 
         start_time = perf_counter()
         try:
-            rv = yield from func(*args, **kw)
+            rv = await func(*args, **kw)
             return rv
         finally:
             observe()
@@ -77,14 +77,13 @@ def time(metric):
 
 
 def time_future(metric, future):
-    @asyncio.coroutine
     @wrapt.decorator
-    def measure():
+    async def measure():
         def observe():
             metric.observe(perf_counter() - start_time)
 
         try:
-            rv = yield from future
+            rv = await future
             return rv
         finally:
             observe()

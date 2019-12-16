@@ -33,6 +33,6 @@ def test_auth_cache_basics(cache):
 
 
 def test_auth_cache_old_data(cache):
-    cache._set('some_token', user_id=3, is_active=True)
+    cache._set('some_token', user_id=3, is_active=0)
     with pytest.raises(KeyError):
         cache.get_auth('some_token')

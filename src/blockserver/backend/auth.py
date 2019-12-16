@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from tornado.httpclient import AsyncHTTPClient, HTTPError
 from blockserver.server import options
 from blockserver.backend.cache import AbstractCache

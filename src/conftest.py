@@ -56,24 +56,6 @@ def service_layer():
     return services.ServiceLayer()
 
 
-@pytest.fixture
-def io_loop(request):
-
-    """Create an instance of the `tornado.ioloop.IOLoop` for each test case.
-    """
-    IOLoop = tornado.platform.asyncio.AsyncIOMainLoop
-    io_loop = IOLoop.current()
-    io_loop.make_current()
-
-    def _close():
-        io_loop.clear_current()
-        if not IOLoop.initialized() or io_loop is not IOLoop.instance():
-            io_loop.close(all_fds=True)
-
-    request.addfinalizer(_close)
-    return io_loop
-
-
 @pytest.yield_fixture
 def auth_server(service_layer):
     prev_auth = options.dummy_auth
@@ -128,33 +110,26 @@ def backend(request, cache):
 
 @pytest.fixture
 def cache(request):
-    cache_object = cache_backends.RedisCache(host='localhost', port='6379')
+    cache_object = cache_backends.RedisCache(host='redis', port='6379')
     cache_object.flush()
     return cache_object
 
 
-def apply_migrations(user, host, port, db):
+def apply_migrations(database_url):
     os.chdir(BASEDIR)
     config = Config(ALEMBIC_CONFIG)
 
-    url = "postgresql://{}@{}:{}/{}".format(
-        user, host, port, db)
-    os.environ['BLOCK_DATABASE_URI'] = url
+    os.environ['BLOCK_DATABASE_URI'] = database_url
     upgrade(config, 'head')
 
 
 @pytest.fixture(scope='session')
-def pg_connection(request, postgresql_proc):
-    config = get_config(request)
-    pg_user = config['user']
-    pg_host = postgresql_proc.host
-    pg_port = postgresql_proc.port
-    pg_db = config['db'] = 'tests'
-
-    init_postgresql_database(pg_user, pg_host, pg_port, pg_db)
-    apply_migrations(pg_user, pg_host, pg_port, pg_db)
-    conn = psycopg2.connect(dbname=pg_db, user=pg_user,
-                            host=pg_host, port=pg_port)
+def pg_connection(request):
+    import environs
+    env = environs.Env()
+    db_url = env('DATABASE_URL')
+    apply_migrations(db_url)
+    conn = psycopg2.connect(dsn=db_url)
     return conn
 
 
@@ -280,13 +255,13 @@ def pytest_addoption(parser):
 def pytest_generate_tests(metafunc):
     if 'backend' in metafunc.fixturenames:
         backends = ['dummy']
-        if not metafunc.config.option.dummy:
-            backends.append('s3')
+        # if not metafunc.config.option.dummy:
+        #     backends.append('s3')
         metafunc.parametrize("backend", backends, indirect=True)
     if 'transfer' in metafunc.fixturenames:
         backends = ['dummy']
-        if not metafunc.config.option.dummy:
-            backends.append('s3')
+        # if not metafunc.config.option.dummy:
+        #     backends.append('s3')
         metafunc.parametrize("transfer", backends, indirect=True)
 
 

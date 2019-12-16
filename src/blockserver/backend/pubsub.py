@@ -1,3 +1,4 @@
+from __future__ import annotations
 import aioredis
 from tornado import ioloop
 
@@ -30,7 +31,7 @@ class AbstractSubscribe:
 
 
 class AsyncRedisSubscribe(AbstractSubscribe):
-    def __init__(self, connection_pool: aioredis.RedisPool):
+    def __init__(self, connection_pool: aioredis.ConnectionsPool):
         self.connection_pool = connection_pool
         self.channel = None
         self.connection = None
@@ -38,11 +39,13 @@ class AsyncRedisSubscribe(AbstractSubscribe):
     async def subscribe(self, channel, wildcard=False):
         self.connection = await self.connection_pool.acquire()
         monitoring.PUBSUB_OPEN_CONNECTIONS.inc()
+        redis_channel = aioredis.Channel(channel, is_pattern=wildcard)
         if wildcard:
-            subscriber = self.connection.psubscribe
+            command = 'psubscribe'
         else:
-            subscriber = self.connection.subscribe
-        self.channel, = await subscriber(channel)
+            command = 'subscribe'
+        await self.connection.execute_pubsub(command, redis_channel)
+        self.channel = redis_channel
 
     async def close(self):
         await self.connection.unsubscribe()
@@ -68,6 +71,8 @@ class AsyncRedisSubscribe(AbstractSubscribe):
 
 
 async def redis_publish(connection_pool: aioredis.Redis, channel, message):
+    import json
     with await connection_pool as connection:
-        await connection.publish_json(channel, message)
+        as_json = json.dumps(message)
+        await connection.execute('publish', channel, as_json)
     monitoring.PUBSUB_PUBLISHED.inc()
