@@ -3,7 +3,7 @@ glinda==0.0.3
 boto3==1.2.3
 pytest==3.0.5
 tornado==4.3
-redis==2.10.5
+redis==4.5.3
 pytest-tornado==0.4.4
 prometheus_client==0.0.13
 wrapt==1.10.6
