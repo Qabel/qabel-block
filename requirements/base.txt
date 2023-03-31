@@ -2,7 +2,7 @@ hiredis==1.0.0
 glinda==1.0.1
 boto3==1.9.245
 tornado==6.0.3
-redis==3.3.8
+redis==4.4.4
 prometheus-client==0.7.1
 wrapt==1.11.2
 asyncio==3.4.3
